@@ -1,0 +1,914 @@
+---
+title: "Empirical Mode Decomposition to Analyze Water Levels"
+author: "Falk Mielke"
+date: "2024-12-31"
+format:
+  html:
+    toc: true
+    html-math-method: katex
+---
+
+TODO: application to real water levels (`watina`)
+
+
+# Introduction
+
+Conventional analysis methods for continuous signals are designed to either reduce temporal variation to simplified quantities (e.g. "mean", "span = max - min" of a signal).
+If signals oscillate regularly, Fourier methods are applicable.
+These methods are well known and readily applied.
+
+
+However, these methods fail to capture the complex characteristics of a signal. 
+Irregular changes, varying amplitudes, and changing frequencies can result in derived measures which are no good representation of the data.
+
+
+A less widespread method is **Empirical Mode Decomposition**.
+It is, as the name suggests, an empirical method which can help to separate meaningful components of a signal.
+The steps involved are trivial, as I will demonstrate in this tutorial.
+
+::: {.panel-tabset group="language"}
+### R
+
+```{r r-setup}
+.libPaths("/data/R/library")
+suppressMessages(library("dplyr"))
+suppressMessages(library("ggplot2"))
+suppressMessages(library("interpolators"))
+
+```
+
+
+### Python
+
+
+```{python py-setup}
+
+# numeric analysis
+import numpy as NP
+
+# data frames
+import pandas as PD
+
+# empirical mode decomposition
+import emd as EMD # (just to peek how the pro's do it)
+
+# signal processing
+import scipy.signal as SIG
+import scipy.ndimage as NDI
+import scipy.interpolate as INTP
+
+# plotting
+import matplotlib as MPP
+import matplotlib.pyplot as PLT
+```
+
+:::
+
+# Example I: Canary Gape Angle
+
+## gape angle data 
+
+For exploration, take this brief episode of beak gape angle of a canary cracking hemp seeds, courtesy of [Maja Mielke](https://orcid.org/0000-0001-6328-0589) ([*website*](http://mielke-bio.info/maja/blog))
+
+
+::: {.panel-tabset group="language"}
+### R
+
+```{r r-load-data}
+data <- read.csv2("canary_gape_example.csv", sep = ",", dec = ".")
+x <- data$'frame'
+x <- x - min(x)
+x <- x / max(x)
+
+y <- data$'totalGape'
+```
+
+
+```{r r-plot-data}
+#| label: fig-data-r
+#| fig-cap: "The data. Grey lines show minimum, maximum and mean of the signal."
+
+ggplot(NULL, aes(x = x, y = y)) +
+  geom_line(color = "black") +
+  geom_hline(yintercept =  min(y), color = "grey", alpha = 0.6) +
+  geom_hline(yintercept =  max(y), color = "grey", alpha = 0.6) +
+  geom_hline(yintercept = mean(y), color = "grey", alpha = 0.8) +
+  theme_bw() +
+  labs(x = "time (arb. units)", y = "gape angle (deg)") +
+  theme(legend.position = "none")
+
+```
+
+### Python
+
+```{python py-load-data}
+data = PD.read_csv("canary_gape_example.csv")
+x = data['frame'].values.ravel()
+x -= NP.min(x)
+x = NP.array(x, dtype = float) / NP.max(x)
+
+y = data["totalGape"].values
+```
+
+
+```{python py-plot-data}
+#| label: fig-data-py
+#| fig-cap: "The data. Grey lines show minimum, maximum and mean of the signal."
+
+def ShowPlot(ax = None):
+    if ax is None:
+        ax = PLT.gca()
+    PLT.legend(loc = "lower right")
+    ax.set_xlabel("time (arb. units)")
+    ax.set_ylabel("gape angle (deg)")
+    ax.spines[["top", "right"]].set_visible(False)
+    PLT.show()
+
+
+PLT.plot(x, y, "k-", label = "canary beak gape angle")
+PLT.axhline(min(y), lw = 0.5, color = "0.4", alpha = 0.6)
+PLT.axhline(max(y), lw = 0.5, color = "0.4", alpha = 0.6)
+PLT.axhline(NP.mean(y), lw = 0.5, color = "0.4", alpha = 0.8)
+ShowPlot()
+```
+
+:::
+
+This bird was in ["positioning" and "biting" phase](http://mielke-bio.info/maja/blog/01_eating_or_being_eaten), placing a seed in the right position for cracking with the help of their upper beak, lower beak and tongue.
+On the x axis of [@fig-data-py]/[@fig-data-r], you see the time, measured in video frames and normalized.
+On the y axis, gape angle indicates (approximately) the angle between the beak tips and corner[^1].
+
+[^1]: "Beak corner" is not the real reference, I just used it for illustration. In fact, an anatomical coordinate reference system was used.
+
+
+You can clearly see an initial episode with large gape angle oscillations, and a later episode with less extreme, still oscillatory movement. 
+
+
+
+## Basic Algorithm
+
+Engineers often talk about "peak amplitude" and quantify a **momentary amplitude** of a noticably oscillating signal ([see here](https://www.keysight.com/used/be/en/knowledge/guides/how-to-measure-amplitude-engineers-guide)).
+
+This goes by the framework of ["Hilbert Transform"](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.hilbert.html#scipy.signal.hilbert) and ["Analytical Signal"](https://en.wikipedia.org/wiki/Analytic_signal).
+
+
+And to get those, one has to first detect the **peaks** (i.e. local maxima) of the signal.
+[The `emd` toolbox in Python](https://emd.readthedocs.io/en/stable/stubs/emd.sift.interp_envelope.html) can achieve this. 
+(I did not find the equivalent function in the `R::emd` library.)
+
+
+```{python py-emd-extrema}
+#| label: fig-emd-py
+#| fig-cap: "Empirical mode decomposition involves finding and averaging the envelope. Here, this is done with the `emd` library and default settings."
+
+
+envelope = NP.stack(
+      EMD.sift.interp_envelope(y, interp_method = "pchip"),
+      axis = 1)
+# Feel free to play with the `interp_method`!
+
+PLT.plot(x, y, label = "raw signal", color = "k")
+PLT.plot(x, envelope[:, 0], color = "orange", label = "lower and upper envelope")
+PLT.plot(x, envelope[:, 1], color = "orange", label = None)
+PLT.plot(x, NP.mean(envelope, axis = 1), color = "darkblue", label = "mean of envelope")
+
+ShowPlot()
+
+```
+
+
+
+This is the formally correct application of [Empirical Mode Decomposition](https://en.wikipedia.org/wiki/Hilbert%E2%80%93Huang_transform#Empirical_mode_decomposition).
+
+
+::: { .callout-tip }
+
+To extract an empirical mode, the conventional EMD procedure involves:
+
+- finding the peaks (local extrema) of a signal
+- interpolating values at the peaks, connecting them as the envelope
+- then taking the mean of the envelope (interpolated peaks)
+
+:::
+
+
+Those are relatively simple steps for which primitive functions exist.
+
+An aesthetic problem remains: the brief ups- and downs ("wiggles") that cause narrow envelope where it shouldn't be (e.g. around $t=0.05$).
+Note that these wiggles do not matter much for the actual EMD procedure.
+
+
+## Peak Detection: Prominence!
+
+While the `EMD` toolbox is quite comprehensive, it might be useful to get our hands on the simple steps outlined above.
+
+The first one is **peak detection**.
+Scipy holds a default function for it: [`scipy.signal.find_peaks()`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.find_peaks.html).
+Non-comprehensive equivalents in R are [`signal::findpeaks()` and `pracma::findpeaks()`](https://search.r-project.org/CRAN/refmans/pracma/html/findpeaks.html), and there is [`gsignal`](https://cran.r-project.org/web/packages/gsignal/vignettes/gsignal.html).
+
+
+The functions only find the local *maxima*, but that is no challenge (just flip the signal to get minima).
+
+
+
+::: {.panel-tabset group="language"}
+### R
+
+```{r r-find-peaks}
+#| label: fig-peaks-r
+#| fig-cap: "Peak detection using `pracma::findpeaks()` wiht a threshold of `0.4`. Note that the first and last sample were manually appended to avoid end effects."
+peaks <- sort(c(pracma::findpeaks(y, threshold = 0.4, minpeakdistance = 20)[, 2], length(y)))
+troughs <- sort(c(1, pracma::findpeaks(-y, threshold = 0.4, minpeakdistance = 20)[, 2]))
+
+ggplot(NULL, aes(x = x, y = y)) +
+  geom_line(color = "black") +
+  geom_point(aes(x = x[peaks], y = y[peaks]), color = "orange", size = 6, alpha = 0.6) +
+  geom_point(aes(x = x[troughs], y = y[troughs]), color = "orange", size = 6, alpha = 0.6) +
+  theme_bw() +
+  labs(x = "time (arb. units)", y = "gape angle (deg)") +
+  theme(legend.position = "none")
+
+```
+
+The purpose of the `pracma` package is matlab portability.
+In consequence, it is less feature-rich than `scipy`, yet still the best peak finding tool in R I found.
+
+
+### Python
+
+```{python py-scipy-find-peaks}
+#| label: fig-peaks-py
+#| fig-cap: "Peak detection using `scipy.signal.find_peaks()` wiht a prominence of `0.5`. Note that the first and last sample were manually appended to avoid end effects."
+
+peaks = NP.append(SIG.find_peaks(y, prominence = 0.5)[0], len(x)-1)
+troughs = NP.append(0,SIG.find_peaks(-y, prominence = 0.5)[0])
+
+print('num peaks: ', len(peaks), ", num troughs: ", len(troughs))
+# print('peaks: ', peaks)
+
+PLT.plot(x, y, lw = 0.5, color = "k", label = "raw signal")
+PLT.scatter(x[peaks], y[peaks], s = 10, marker = "o", facecolor = "orange", edgecolor = "k", alpha = 0.6, label = "detected peaks")
+PLT.scatter(x[troughs], y[troughs], s = 10, marker = "o", facecolor = "orange", edgecolor = "k", alpha = 0.6, label = None)
+
+ShowPlot()
+```
+
+
+The `scipy` function is quite elaborate and feature-rich.
+
+:::
+
+
+::: { .callout-note }
+
+- You could also use the `threshold`, `distance`/`minpeakdistance `, and `width` arguments instead of `prominence`, if you have meaningful priors for either of those.
+- You should double-check that every peak follows a trough (though not strictly necessary, you may skip one or two).
+- It remains to be demonstrated how this performs on less oscillatory trials.
+
+:::
+
+
+Make sure to do something about your `NaN`'s: `find_peaks` does not like them.
+And keep an eye on those edges (i.e. start and end).
+
+
+
+## Interpolation: Choice!
+
+There are many interpolation methods ([splines, anyone?](https://docs.scipy.org/doc/scipy/tutorial/interpolate/1D.html)).
+One which is used by the reference implementation is `pchip`, "Piecewise Cubic"[^pchip].
+
+[^pchip]: Fritsch and Butland (1984): "A Method for Constructing Local Monotone Piecewise Cubic Interpolants". SIAM Journal on Scientific and Statistical Computing 5:2, 300-304. <https://doi.org/10.1137/0905021>
+
+
+::: {.panel-tabset group="language"}
+### R
+
+In R, the `pracma` and `signal` libraries contain interpoltion functions which are not accurate (copies of matlab).
+
+Then, there is the `interpolators` library, yet for some weird design choice it does not offer the choice to extrapolate beyond the data range (though splines can do that easily, see Python).
+
+
+```{r r-interpolate-peaks}
+#| label: fig-interpolate-r
+#| fig-cap: "Peak interpolation using `interpolators::iprPCHIP`."
+
+# py <- signal::pchip(sort(as.vector(x[peaks])), y[peaks], x)
+# ty <- signal::pchip(sort(as.vector(x[troughs])), y[troughs], x)
+# py <- pracma::interp1(sort(as.vector(x[peaks])), y[peaks], x, method = "cubic")
+# ty <- pracma::interp1(sort(as.vector(x[troughs])), y[troughs], x, method = "cubic")
+
+select <-  x >= x[max(c(peaks[1], troughs[1]))] & x <= x[min(c(peaks[length(peaks)], troughs[length(troughs)]))]  
+xi <- x[select]
+yi <- y[select]
+py <- interpolators::evalInterpolator(interpolators::iprPCHIP(x[peaks], y[peaks]), xi)
+ty <- interpolators::evalInterpolator(interpolators::iprPCHIP(x[troughs], y[troughs]), xi)
+
+
+ggplot(NULL, aes(x = x, y = y)) +
+  geom_line(color = "black") +
+  geom_point(aes(x = x[peaks], y = y[peaks]), color = "orange", size = 6, alpha = 0.6) +
+  geom_point(aes(x = x[troughs], y = y[troughs]), color = "orange", size = 6, alpha = 0.6) +
+  geom_line(aes(x = xi, y = py), color = "orange", alpha = 0.8) +
+  geom_line(aes(x = xi, y = ty), color = "orange", alpha = 0.8) +
+  theme_bw() +
+  labs(x = "time (arb. units)", y = "gape angle (deg)") +
+  theme(legend.position = "none")
+
+
+```
+
+
+
+### Python
+
+The interpolation tools of `scipy.interpolate` work like a charm.
+
+
+```{python py-scipy-interpolate-peaks}
+#| label: fig-interpolate-py
+#| fig-cap: "Peak interpolation using `scipy.interpolate.pchip_interpolate()`."
+
+py = INTP.pchip_interpolate(x[peaks], y[peaks], x)
+ty = INTP.pchip_interpolate(x[troughs], y[troughs], x)
+
+PLT.plot(x, y, lw = 0.5, color = "k", label = "raw signal")
+PLT.scatter(x[peaks], y[peaks], s = 10, marker = "o", facecolor = "orange", edgecolor = "k", alpha = 0.6, label = "detected peaks")
+PLT.scatter(x[troughs], y[troughs], s = 10, marker = "o", facecolor = "orange", edgecolor = "k", alpha = 0.6, label = None)
+PLT.plot(x, py, lw = 0.5, color = "darkorange", label = "peak interpolation")
+PLT.plot(x, ty, lw = 0.5, color = "darkorange", label = None)
+ShowPlot()
+```
+
+Keep in mind that the first- and last sample were appended to the lists of peaks and troughs above to avoid edge effects.
+
+:::
+
+
+Interpolation in R is quite rudimentary: I miss the option to extrapolate, and one to fix the actual values.
+I did not find a package for [RBF interpolation](https://en.wikipedia.org/wiki/Radial_basis_function_interpolation).
+Python is quite accurate and versatile in terms of interpolation: [`scipy.interpolate`](https://docs.scipy.org/doc/scipy/tutorial/interpolate.html) is feature rich and can do [RBF](https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.RBFInterpolator.html#scipy.interpolate.RBFInterpolator).
+
+
+
+## Mode Extraction and Residual
+
+
+::: {.panel-tabset group="language"}
+### R
+
+
+```{r r-calc-emd}
+envelope <- cbind("peaks" = py, "troughs" = ty)
+rownames(envelope) <- xi
+firstmode <- rowMeans(envelope)
+residual <- yi - firstmode
+amplitude <- abs(py-ty)/2
+```
+
+
+```{r r-plot-firstmode}
+#| label: fig-firstmode-r
+#| fig-cap: "the extracted first empirical mode (top) and the residual (bottom)."
+
+ggplot(NULL, aes(x = xi, y = firstmode)) +
+  geom_line(color = "black") +
+  theme_bw() +
+  labs(x = "time (arb. units)", y = "gape angle (deg)") +
+  theme(legend.position = "none")
+
+```
+
+
+```{r r-plot-firstmode-residual}
+#| label: fig-firstmode-residual-r
+#| fig-cap: "The residual after extraction of the first mode."
+
+ggplot(NULL, aes(x = xi, y = residual)) +
+  geom_line(color = "black") +
+  geom_line(aes(x = xi, y = amplitude), color = "darkred", alpha = 0.8) +
+  geom_line(aes(x = xi, y = -amplitude), color = "darkred", alpha = 0.8) +
+  theme_bw() +
+  labs(x = "time (arb. units)", y = "gape angle (deg)") +
+  theme(legend.position = "none")
+
+```
+
+### Python
+
+```{python py-plot-firstmode}
+#| label: fig-firstmode-py
+#| fig-cap: "The extracted first empirical mode (top) and the residual (bottom)."
+
+envelope = NP.stack([py, ty], axis = 1)
+firstmode = NP.mean(envelope, axis = 1)
+residual = y - firstmode
+amplitude = NP.abs(NP.diff(envelope, axis = 1)/2)
+
+
+fig, axes = PLT.subplots(2, 1, sharex = True)
+
+axes[0].plot(x, firstmode,
+    lw = 0.5, color = "k", label = "residual")
+axes[0].set_ylabel("gape angle (deg)")
+axes[0].spines[["top", "right", "bottom"]].set_visible(False)
+axes[0].get_xaxis().set_visible(False)
+
+axes[1].plot(x, residual,
+    lw = 0.5, color = "k", label = "residual")
+
+axes[1].plot(x, amplitude, 
+    lw = 0.5, color = "darkred", label = "peak amplitude")
+axes[1].plot(x, -amplitude, 
+    lw = 0.5, color = "darkred", label = None)
+axes[1].axhline(0, zorder = 0, color = "grey", linewidth = 0.5)
+ShowPlot(axes[1])
+```
+
+
+:::
+
+I do not know why the envelope touches the peaks of the residual... I honestly find this a beautiful mystery.
+
+
+
+# What is EMD good for?
+
+Separating the **first empirical mode** and the **residual** ([@fig-firstmode-py]/[@fig-firstmode-residual-r]) illustrates what you can achieve with the presented procedure.
+
+
+::: { .callout-tip }
+The *first mode*:
+
+- captures a rather long-term change of beak opening, by extracting something close to the mean of the angular range in which the canary beak move
+- is smooth, compared to the raw signal
+- shows jump-like and wiggly behavior.
+
+The *residual*:
+
+- is far more regular than the raw signal
+- is centered
+- can be subject of further analysis (e.g. Fourier Analysis).
+
+The mode extraction can be repeated iteratively.
+
+:::
+
+
+You might find this too canary-centric. 
+I will now attempt to generailze the procedure by applying it to (i) random walks and (ii) real groundwater level data.
+
+
+But, first things first: for the purpose of conceptual generalization, a more general function might be useful.
+
+
+::: {.panel-tabset group="language"}
+### R
+
+```{r r-firstmode-function}
+#' extracts from a signal (with an optional timeline vector)
+#'
+#' extra arguments will propagate to `findpeaks`
+#'
+#' @returns a list with
+#'   - first empirical mode: mean of envelope
+#'   - envelope: the upper and lower peak amplitude envelope
+#'   - select: boolean vector of time subset
+#'   - extrema: peaks and troughs
+#'
+#' 
+#' usage:
+#' > emd <- extract_firstmode(y, t = x, threshold = 0.4, minpeakdistance = 20)
+extract_firstmode <- function (signal, t = NULL, ...) {
+
+  # general purpose time vector
+  if (is.null(t)) {
+    t <- seq(0., 1., length.out = length(signal))
+  }
+
+  ## 1. find peaks
+  peaks <- sort(pracma::findpeaks(y, ...)[, 2])
+  troughs <- sort(pracma::findpeaks(-y, ...)[, 2])
+  extrema <- sort(c(peaks, troughs))
+  
+  if (peaks[1] < troughs[1]) {
+    peaks <- c(peaks, length(signal))
+    troughs = c(1, troughs)
+  } else if (peaks[1] > troughs[1]) {
+    peaks = c(1, peaks)
+    troughs = c(troughs, length(signal))
+  }
+
+  ## 2. interpolate -> envelope
+  select <-  x >= x[max(c(peaks[1], troughs[1]))] & x <= x[min(c(peaks[length(peaks)], troughs[length(troughs)]))]  
+  xi <- x[select]
+  yi <- y[select]
+  py <- interpolators::evalInterpolator(interpolators::iprPCHIP(x[peaks], y[peaks]), xi)
+  ty <- interpolators::evalInterpolator(interpolators::iprPCHIP(x[troughs], y[troughs]), xi)
+
+  ## 3. empirical mode
+  envelope <- cbind("peaks" = py, "troughs" = ty)
+  rownames(envelope) <- xi
+  firstmode <- rowMeans(envelope)
+  # residual <- yi - firstmode
+  # amplitude <- abs(py-ty)/2
+
+  return(list("firstmode" = firstmode, "envelope" = envelope, "select" = select, "extrema" = extrema))
+}
+
+
+
+```
+
+### Python
+
+```{python py-firstmode-function}
+
+def ExtractFirstmode(signal, t = None, **peak_kwargs):
+    # extracts from a signal (with an optional timeline vector)
+    # the following components:
+    #   - first empirical mode
+    #   - envelope
+    #   - extrema
+    #
+    # usage:
+    # > md1, env, _ = ExtractFirstmode(y, x, prominence = 0.5)
+
+    # general purpose time vector
+    if t is None:
+        t = NP.linspace(0., 1., len(signal), endpoint = True)
+
+    ## 1. find peaks
+    peaks = SIG.find_peaks(signal, **peak_kwargs)[0]
+    troughs = SIG.find_peaks(-signal, **peak_kwargs)[0]
+    extrema = NP.array(sorted([*peaks, *troughs]), dtype = int)
+
+    if peaks[0] < troughs[0]:
+        peaks = NP.append(peaks, len(signal)-1)
+        troughs = NP.append(0, troughs)
+    elif peaks[0] > troughs[0]:
+        peaks = NP.append(0, peaks)
+        troughs = NP.append(troughs, len(signal)-1)
+        
+    ## 2. interpolate -> envelope
+    py = INTP.pchip_interpolate(t[peaks], signal[peaks], t)
+    ty = INTP.pchip_interpolate(t[troughs], signal[troughs], t)
+
+    ## 3. empirical mode
+    envelope = NP.stack([py, ty], axis = 1)
+    firstmode = NP.mean(envelope, axis = 1)
+    
+    # residual = signal - firstmode
+    # amplitude = NP.abs(NP.diff(envelope, axis = 1)/2)
+
+    return firstmode, envelope, extrema
+
+
+```
+
+:::
+
+
+These functions can help a lot to play around with the peak finding parameters and inspect the outcome.
+
+
+
+# Example II: Random Walk on Water
+## anachronistic measures
+
+Ultimately, I would like to apply these functions to quasi-continuous water level measurements from `watina`.
+My goal is to slightly improve water level analysis, for the following reason.
+
+
+Conventional water level analysis is subject to a few anachronisms.
+In *the good old days*$^{TM}, long before the time of GPS, automatic data loggers, or computers, people went to the field in spring to gather bi-weekly measures of water level from observation wells. 
+
+What they were really interested in were approximate measures of highest and lowest ground water, so-called `xG3` values. 
+"Approximate", because measurement frequency was limited: a bi-weekly rhythm was about as good as we could get with actual humans putting yardsticks into holes in the ground.
+
+
+There are `LG3` for a lower- and `HG3` for an upper reference of water levels [^ritzema2012].
+They are defined as follows:
+
+> Gemiddelde van de drie laagste|hoogste grondwaterstanden in een hydrologisch jaar (1 april t/m 31 maart) bij een meetfrequentie van tweemaal per maand (rond de 14e en 28e).
+
+[^ritzema2012]: Ritzema *et al.* (2012): "Meten en interpreteren van grondwaterstanden: analyse van methodieken en nauwkeurigheid". Alterra-rapport, Wageningen University & Research. https://edepot.wur.nl/215081
+
+
+This is literally how they are calculated.
+The mean of the three lowest/highest ground water levels measured in bi-weekly measurement interval, over a period from April to next March.
+
+
+The anachronism is that we still calculate `xG3` like this, despite the availability of high frequency sampled water levels.
+We artificially pick bi-weekly values.
+We disregard the continuous, temporally periodic nature of the phenomenon.
+We ignore measurement uncertainty.
+
+
+Let us first get an intuition of what `xG3` values look like, by looking at random walk data.
+
+
+## random walk data
+ 
+Example code in R for generating random walk traces [can be found online](https://mattgrobis.blogspot.com/2016/04/introduction-to-r-3-for-loops-and.html).
+I wrapped into a function for repeated execution, integrating `LG3` and `HG3` extraction.
+
+
+::: {.panel-tabset group="language"}
+### R
+
+```{r r-define-randomwalk}
+
+#' A random walk with regular subsamples
+#' 
+#' @param start <- 0 # The starting point of the random walk
+#' @param mean.move <- 0 # For each step, is there a bias to move in a certain direction?
+#'        A positive value means the random walk will tend to move
+#'        upwards, a negative value will make it tend downward, and
+#'        zero is unbiased.
+#' @param sd.move <- 1 # The standard deviation of the step size. The higher this is, the more the random walk will bounce around.
+#' @param t <- 365 # The number of steps you want the walk to take overall
+#' @param sampling_interval <- 14 # the xG3 sampling interval (bi-weekly)
+#'
+walk_randomly <- function(start = 0,
+                          mean.move = 0,
+                          sd.move = 1,
+                          t = 365,
+                          sampling_interval = 14
+                          ) {
+  # Begin the walk at the starting point
+  walk <- start
+  samp <- start # bi-weekly samples
+
+  # Run the random walk
+  for(i in 2:t){
+     # Start at 2 because we already have our starting point
+    walk[i] <- walk[i - 1] + # Take the previous position...
+    rnorm(1, mean.move, sd.move)   # ... and add a random value
+    walk[i] <- walk[i] * 0.98 # pull towards zero
+
+    # take a sample every two weeks
+    if (i %% sampling_interval == 0) {
+      samp[as.integer(i/sampling_interval)] <- walk[i]
+    }
+  }
+
+  # aggregate the results
+  result <- list()
+  result$walk <- walk # the walk itself
+
+  result$samples <- samp # bi-weekly samples
+
+  # calculating xG3 values
+  result$hg3 <- mean(sort(samp, decreasing = TRUE)[1:3])
+  result$lg3 <- mean(sort(samp, decreasing = FALSE)[1:3])
+
+  return(result)
+}
+
+```
+
+
+This is what the walks look like:
+
+```{r r-do-the-walk}
+#| label: fig-randomwalks-r
+#| fig-cap: "Random walks as simulated water level measurements. Colored lines are the walks, circles indicate bi-weekly samples, horizontal lines mark LG3 and HG3."
+
+sampling_interval <- 14
+n = 5
+dat <- lapply(1:n, walk_randomly)
+# print(dat[[1]])
+
+par(mfrow = c(1, 1))
+skip <- 32
+plot(NA,
+     xlim = c(0, 365), ylim = c(0, (n+1)*skip),
+     xlab = "days", ylab = "measurements",
+     yaxt = "n"
+     )
+
+mypal <- colorRampPalette( c( "red", "green", "blue" ) )( n )
+
+
+for(i in 1:n){
+  lines(skip*i + dat[[i]]$walk, type = "l", col = mypal[i], , lwd=1.5) #thickness set to be higher
+  points(seq(sampling_interval, 365, by = sampling_interval), skip*i + dat[[i]]$samples)
+  abline(h = skip*i + dat[[i]]$hg3)
+  abline(h = skip*i + dat[[i]]$lg3)
+}
+
+
+```
+
+
+### Python
+
+Translating the R functions above to a Python object.
+
+```{python py-define-randomwalk}
+
+class RandomWalk(object):
+    # This is how I imagine dancing in the eighties.
+
+    def __init__(self, \
+        start: float = 0, \
+        direction: float = 0, \
+        spread: float = 1, \
+        t: int = 365, \
+        interval: int = 14 \
+        ):
+
+        # a bit of overhead.
+        self.measurements = [start]
+        self.samples = {}
+        self.direction = direction
+        self.spread = spread 
+        self.t = t
+        self.interval = interval
+
+        # start immediately.
+        self.Walk()
+
+    def Sample(self):
+        # just for convenience.
+        x = len(self.measurements)
+        self.samples[x] = self.measurements[x-1]
+
+    def Walk(self):
+        # here, we go!
+
+        for i in range(self.t):
+
+            # compute next step
+            prev = self.measurements[-1]
+            nxt = prev + NP.random.normal(self.direction, self.spread, 1)[0]
+            nxt *= 0.98 # decay/pull towards zero
+
+            self.measurements.append(nxt)
+        
+            # occasionally sample
+            if (i % self.interval) == 0:
+                self.Sample()
+
+    def GetSamples(self):
+        return [v for v in self.samples.values()]
+
+    def GetLG3(self):
+        return NP.mean(sorted(self.GetSamples())[:3])
+
+    def GetHG3(self):
+        return NP.mean(sorted(self.GetSamples())[-3:])
+
+
+
+```
+
+
+This is what the walks look like:
+
+```{python py-do-the-walk}
+#| label: fig-randomwalks-py
+#| fig-cap: "Random walks as simulated water level measurements. Colored lines are the walks, circles indicate bi-weekly samples, horizontal lines mark LG3 and HG3."
+
+dat = [RandomWalk() for _ in range(5)]
+
+
+fig, ax = PLT.subplots(1, 1)
+
+skip = 32 # shifting up the y axis
+
+for i, wlk in enumerate(dat):
+    ax.plot(skip*i + NP.array(wlk.measurements), lw = 1.5, zorder = 0)
+    smp = NP.stack([[k, v] for k, v in wlk.samples.items()], axis = 0)
+    ax.scatter(smp[:, 0], skip*i+smp[:, 1], s = 6, facecolor = "none", edgecolor = "k", alpha = 0.8, zorder = 20)
+    ax.axhline(skip*i + wlk.GetLG3(), lw = 0.5, ls = ":", zorder = 10)
+    ax.axhline(skip*i + wlk.GetHG3(), lw = 0.5, ls = ":", zorder = 10)
+
+ax.spines[["left", "top", "right"]].set_visible(False)
+ax.set_yticks([]);
+ax.set_xlabel("days");
+ax.set_ylabel("measurements");
+PLT.show()
+
+```
+
+:::
+
+
+Before seeing these plots, I was skeptical if `xG3` values had any use.
+Due to the bi-weekly sampling, we have everything in here: missed peaks, exaggeration of brief excourses, lots of ignored values.
+The "mean of three lowest/highest" is a charmingly simple calculation.
+
+
+Nevertheless, I was astonished to see what a good representation of value range the band between `LG3` and `HG3` are!
+They always come out at visually meaningful values, usually covering approximately the 90% highest density interval.
+
+Quite reassuring. 
+But maybe there is room for improvement, anyways.
+
+
+## EMD of Random Data
+
+Let us see what the empirical mode of a random walk looks like, and how it might add to the water level story.
+
+
+::: {.panel-tabset group="language"}
+### R
+
+```{r r-random-emd}
+
+par(mfrow = c(1, 1))
+skip <- 32
+n <- length(dat)
+plot(NA,
+     xlim = c(0, 365), ylim = c(0, (n+1)*skip),
+     xlab = "days", ylab = "measurements",
+     yaxt = "n"
+     )
+
+for(i in 1:n){
+  y <- dat[[i]]$walk
+  t <- seq(0., 365., length.out = length(y))
+  emd <- extract_firstmode(y, t = t) #, minpeakdistance = 1)
+  pts <- emd$extrema     
+
+  lines(t, skip*i + y, type = "l", col = "gray", lwd=0.5) 
+  points(t[pts], skip*i + y[pts], cex = 0.5, col = alpha("black", 0.3))
+  lines(t[emd$select], skip*i + emd$firstmode, type = "l", col = "darkgreen", lwd=1.0) 
+}
+
+```
+
+### Python
+
+```{python py-random-emd}
+
+fig, ax = PLT.subplots(1, 1)
+skip = 32
+
+for i, wlk in enumerate(dat):
+    y = NP.array(wlk.measurements)
+    mode, env, peaks = ExtractFirstmode(y) # , width = 1)
+    res = y - mode
+    amp = NP.abs(NP.diff(env, axis = 1)/2)
+
+
+    ax.plot(skip*i + y, lw = 0.5, color = 'k', zorder = 0, alpha = 0.4)
+    ax.plot(skip*i + mode, lw = 1.0, color = 'darkgreen', zorder = 20)
+    ax.scatter(peaks, skip*i+y[peaks], s = 8, facecolor = "none", edgecolor = "k", alpha = 0.3, zorder = 10)
+
+ax.spines[["left", "top", "right"]].set_visible(False)
+ax.set_yticks([]);
+ax.set_xlabel("days");
+ax.set_ylabel("measurements");
+PLT.show()
+
+```
+
+:::
+
+
+Note that I did not apply any restrictions (e.g. width, prominence) to peak finding.
+These would quickly lead to over-smoothing of the traces.
+
+
+::: {.callout-note}
+On random walk data, EMD seems to achieve little more than smoothing.
+
+The reason is that there is no regular oscillation in the data.
+
+Lesson learned: EMD is especially useful if the data contains more-or-less regular oscillations.
+:::
+
+
+Next example: real data.
+
+
+
+# Example III: Water Levels
+
+
+(TODO)
+
+
+# Archive
+
+
+::: {.panel-tabset group="language"}
+### R
+
+```{r }
+
+```
+
+### Python
+
+```{python }
+
+```
+
+:::
+
+
+
