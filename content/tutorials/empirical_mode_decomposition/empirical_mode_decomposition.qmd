@@ -1,14 +1,12 @@
 ---
 title: "Empirical Mode Decomposition to Analyze Water Levels"
 author: "Falk Mielke"
-date: "2024-12-31"
+date: "2024-01-12"
 format:
   html:
     toc: true
     html-math-method: katex
 ---
-
-TODO: application to real water levels (`watina`)
 
 
 # Introduction
@@ -238,7 +236,7 @@ In consequence, it is less feature-rich than `scipy`, yet still the best peak fi
 
 ```{python py-scipy-find-peaks}
 #| label: fig-peaks-py
-#| fig-cap: "Peak detection using `scipy.signal.find_peaks()` wiht a prominence of `0.5`. Note that the first and last sample were manually appended to avoid end effects."
+#| fig-cap: "Peak detection using `scipy.signal.find_peaks()` with a prominence of `0.5`. Note that the first and last sample were manually appended to avoid end effects."
 
 peaks = NP.append(SIG.find_peaks(y, prominence = 0.5)[0], len(x)-1)
 troughs = NP.append(0,SIG.find_peaks(-y, prominence = 0.5)[0])
@@ -487,8 +485,8 @@ extract_firstmode <- function (signal, t = NULL, ...) {
   }
 
   ## 1. find peaks
-  peaks <- sort(pracma::findpeaks(y, ...)[, 2])
-  troughs <- sort(pracma::findpeaks(-y, ...)[, 2])
+  peaks <- sort(pracma::findpeaks(signal, ...)[, 2])
+  troughs <- sort(pracma::findpeaks(-signal, ...)[, 2])
   extrema <- sort(c(peaks, troughs))
   
   if (peaks[1] < troughs[1]) {
@@ -500,15 +498,15 @@ extract_firstmode <- function (signal, t = NULL, ...) {
   }
 
   ## 2. interpolate -> envelope
-  select <-  x >= x[max(c(peaks[1], troughs[1]))] & x <= x[min(c(peaks[length(peaks)], troughs[length(troughs)]))]  
-  xi <- x[select]
-  yi <- y[select]
-  py <- interpolators::evalInterpolator(interpolators::iprPCHIP(x[peaks], y[peaks]), xi)
-  ty <- interpolators::evalInterpolator(interpolators::iprPCHIP(x[troughs], y[troughs]), xi)
+  select <- t >= t[max(c(peaks[1], troughs[1]))] & t <= t[min(c(peaks[length(peaks)], troughs[length(troughs)]))]  
+  ti <- as.numeric(t[select])
+  yi <- as.numeric(signal[select])
+  py <- interpolators::evalInterpolator(interpolators::iprPCHIP(t[peaks], as.numeric(signal[peaks])), ti)
+  ty <- interpolators::evalInterpolator(interpolators::iprPCHIP(t[troughs], as.numeric(signal[troughs])), ti)
 
   ## 3. empirical mode
   envelope <- cbind("peaks" = py, "troughs" = ty)
-  rownames(envelope) <- xi
+  rownames(envelope) <- ti
   firstmode <- rowMeans(envelope)
   # residual <- yi - firstmode
   # amplitude <- abs(py-ty)/2
@@ -592,7 +590,7 @@ They are defined as follows:
 
 > Gemiddelde van de drie laagste|hoogste grondwaterstanden in een hydrologisch jaar (1 april t/m 31 maart) bij een meetfrequentie van tweemaal per maand (rond de 14e en 28e).
 
-[^ritzema2012]: Ritzema *et al.* (2012): "Meten en interpreteren van grondwaterstanden: analyse van methodieken en nauwkeurigheid". Alterra-rapport, Wageningen University & Research. https://edepot.wur.nl/215081
+[^ritzema2012]: Ritzema *et al.* (2012): "Meten en interpreteren van grondwaterstanden: analyse van methodieken en nauwkeurigheid". Alterra-rapport, Wageningen University & Research. <https://edepot.wur.nl/215081>
 
 
 This is literally how they are calculated.
@@ -672,7 +670,7 @@ walk_randomly <- function(start = 0,
 This is what the walks look like:
 
 ```{r r-do-the-walk}
-#| label: fig-randomwalks-r
+#| label: fig-randomwalkemds-r
 #| fig-cap: "Random walks as simulated water level measurements. Colored lines are the walks, circles indicate bi-weekly samples, horizontal lines mark LG3 and HG3."
 
 sampling_interval <- 14
@@ -817,6 +815,8 @@ Let us see what the empirical mode of a random walk looks like, and how it might
 ### R
 
 ```{r r-random-emd}
+#| label: fig-randomwalks-r
+#| fig-cap: "EMD of random walks: effectively smoothing the data."
 
 par(mfrow = c(1, 1))
 skip <- 32
@@ -843,6 +843,8 @@ for(i in 1:n){
 ### Python
 
 ```{python py-random-emd}
+#| label: fig-randomwalkemds-py
+#| fig-cap: "EMD of random walks: effectively smoothing the data."
 
 fig, ax = PLT.subplots(1, 1)
 skip = 32
@@ -887,28 +889,276 @@ Next example: real data.
 
 
 # Example III: Water Levels
+<!-- Note: the water level examples are `ZUVP031X` and `NEIP001X`. -->
 
+## Water Levels
 
-(TODO)
+Our institute assembles data from various observation wells, storing them in [a database](https://watina.inbo.be).
 
-
-# Archive
+Two example water level traces shall use as a test case for EMD.
 
 
 ::: {.panel-tabset group="language"}
 ### R
 
-```{r }
+In R, repeated application of the EMD function above does not work.
+
+However, the code here provides a pointer at how to use it.
+
+
+```{r r-load-water}
+#| label: fig-waterlevel-r
+#| fig-cap: "A water level measurement."
+
+wata <- read.csv2("water_level_example_1.csv", sep = ",", dec = ".")
+t <- as.Date(wata$'t')
+w <- wata$'w'
+
+plot(t, w, type = 'o')
+```
+
+
+```{r r-emd-wata}
+#| eval: true
+#| label: fig-waterlevel-emd-r
+#| fig-cap: "EMD of a water level measurement."
+
+wemd <- extract_firstmode(as.numeric(w)) 
+
+fm_t <- t[wemd$select]
+fm_w <- as.numeric(wemd$firstmode)
+residual <- w[wemd$select] - fm_w
+fm_e <- wemd$extrema
+
+ggplot(NULL, aes(x = t, y = w)) +
+  geom_line(color = "darkgray", alpha = 0.6, lwd = 0.5) +
+  geom_line(aes(x = fm_t, y = fm_w), color = "black") +
+  geom_point(aes(x = t[fm_e], y = w[fm_e]), color = "orange", size = 3, alpha = 0.4) +
+  theme_bw()
+
 
 ```
 
+R does not find the peaks reliably (e.g. the first minimum), and there are consecutive peaks/troughs, which is a pity.
+Otherwise, the residual of this first EMD iteration would be "noise", and one coul proceed to EMD on the first mode.
+
+::: {.callout-note}
+The available `Python` tools are more versatile, and I recommend switching to "Python" at this point.
+Even if you are not experienced in that language, the remainder of this tutorial are more conceptual considerations, and will be understandable.
+:::
+
+
 ### Python
 
-```{python }
+```{python py-load-water}
+#| label: fig-waterlevel-py
+#| fig-cap: "A water level measurement. The mean water level is indicated by the dashed horizontal line; note the asymmetry of the signal."
+
+data = PD.read_csv("water_level_example_1.csv")
+data["t"] = PD.to_datetime(data['t'])
+t = data["t"].values.ravel()
+w = data["w"].values
+
+PLT.plot(t, w, lw = 0.5, color = "k");
+PLT.axhline(NP.mean(w), zorder = 0, color = "grey", linewidth = 0.5, linestyle = "--")
+```
+
+DRY = don't repeat yourself... 
+Make another function for the EMD step!
+
+```{python py-emd-wata}
+#| label: fig-waterlevel-emd-py
+#| fig-cap: "EMD of a water level measurement."
+
+def EMDStep(t, w, **peak_kwargs):
+    mode, env, peaks = ExtractFirstmode(w, **peak_kwargs) 
+    res = w - mode
+    amp = NP.abs(NP.diff(env, axis = 1)/2)
+    
+    fig, axes = PLT.subplots(2, 1)
+    ax = axes[0]
+    ax.plot(t, w, lw = 0.5, color = 'k', zorder = 0, alpha = 0.4)
+    ax.plot(t, mode, lw = 1.0, color = 'darkgreen', zorder = 20)
+    ax.scatter(t[peaks], w[peaks], s = 8, facecolor = "none", edgecolor = "k", alpha = 0.3, zorder = 10)
+    ax.axhline(NP.mean(w), zorder = 0, color = "grey", linewidth = 0.5, linestyle = "--")
+    ax.spines[["left", "top", "right"]].set_visible(False)
+    ax.set_ylabel("water level");
+    ax.get_xaxis().set_visible(False)
+    
+    ax = axes[1]
+    ax.plot(t, res, lw = 0.5, color = 'k', zorder = 0, alpha = 0.4)
+    ax.plot(t, amp, 
+        lw = 0.5, color = "darkred", label = "peak amplitude", alpha = 0.3)
+    ax.plot(t, -amp, 
+        lw = 0.5, color = "darkred", label = None, alpha = 0.3)
+    ax.axhline(0, zorder = 0, color = "grey", linewidth = 0.5)
+    ax.spines[["left", "top", "right"]].set_visible(False)
+    ax.set_xlabel("date");
+    ax.set_ylabel("residual");
+
+    return(fig, mode)
+
+fig, mode = EMDStep(t, w);
+PLT.show();
+
+```
+
+
+This is repeatable, both on the mode itself, as well as on the residual:
+
+```{python py-emd-wata-mode}
+#| eval: true
+#| label: fig-waterlevel-emd-mode-py
+#| fig-cap: "Water level measurement, EMD of the first mode."
+
+fig, _ = EMDStep(t, mode);
+PLT.show();
+
+```
+
+```{python py-emd-wata-residual}
+#| eval: true
+#| label: fig-waterlevel-emd2-py
+#| fig-cap: "Water level measurement, the second mode is the EMD of the residual."
+
+EMDStep(t, w - mode);
+PLT.show();
 
 ```
 
 :::
 
+Unguided peak detection *should* find each tiny local peak, therefore initially extracting white noise where it is present.
 
+
+## Guided Mode Search
+
+Experimenting with the peak detection parameters is worth a try.
+(Because this works much better in Python, I will omit the R code here.)
+
+
+First, search the long-term oscillations, by setting `prominence`, `width`, or `distance`.
+In this special case, `width` will exclude the local minima: the lower peaks seem to be rather narrow on this water hole.
+Instead, a combination of distance (more than half a year; remember that peaks and troughs are found separately) and prominence (*meaningful* peak) will find and smoothen the yearly baseline.
+
+
+```{python py-emd-wata-topdown1}
+#| eval: true
+#| label: fig-waterlevel-emd-topdown1
+#| fig-cap: "Exemplifying 'bottom-up' emd, first smoothing the obvious yearly oscillations"
+
+# try: prominence, distance, width
+fig, mode = EMDStep(t, w, distance = 200, prominence = 0.20);
+residual = w - mode
+PLT.show();
+
+```
+
+
+Another obvious component is the fine-grained noise; again, we get it by setting no restrictions on the peak detection.
+
+```{python py-emd-wata-topdown2}
+#| eval: true
+#| label: fig-waterlevel-emd-topdown2
+#| fig-cap: "Another possible step: narrowest peaks."
+
+fig, mode2 = EMDStep(t, residual);
+PLT.show();
+
+```
+
+The remainder is a straightened, de-noised signal which could be used for more standardized analysis.
+
+
+```{python py-emd-wata-topdown3}
+#| eval: true
+#| label: fig-waterlevel-emd-topdown3
+#| fig-cap: "The residual, after two different modes were extracted."
+
+residual2 = residual - mode2
+PLT.plot(t, w - NP.mean(w), lw = 0.5, color = 'k', zorder = 0, alpha = 0.4);
+PLT.plot(t, mode2 - NP.mean(mode2), lw = 1.0, color = 'darkgreen', zorder = 20);
+PLT.axhline(0, color = "k", lw = 0.5, zorder = -1);
+PLT.show();
+
+```
+
+There are some obvious problems in this: 
+
+- edge effects
+- wet summer ~2015: pronounced "dry" minimum was lacking; water levels around that year are dragged towards the zero
+- peak chopping: some peaks, e.g. mid-2010 and 2016, are lost by smoothing 
+
+
+Nevertheless, there is another valuable outcome of EMD: we get the lower and upper **envelope**!
+
+```{python py-wateremd-envelope}
+#| label: fig-water-envelope-py
+#| fig-cap: "The envelope of a water level measurement can be used as a continuous measure of minimum and maximum water levels; envelope average marks a continuous middle of water level range."
+mode, env, peaks = ExtractFirstmode(w, distance = 200, prominence = 0.2) 
+PLT.plot(t, w, lw = 0.5, color = 'k', zorder = 0, alpha = 1.0);
+PLT.plot(t, env[:,0], 
+    lw = 0.5, color = "darkred", label = "envelope", alpha = 0.6);
+PLT.plot(t, env[:,1], 
+    lw = 0.5, color = "darkred", label = None, alpha = 0.6);
+PLT.plot(t, NP.mean(env, axis = 1), 
+    lw = 1.0, color = "darkgreen", label = "first mode", alpha = 0.6);
+PLT.axhline(NP.mean(w), color = "k", lw = 0.5, zorder = -1);
+PLT.show();
+
+```
+
+
+
+
+Note that there is no guarantee that the same parameters will work on every observation in your data set.
+In my experience, a "guided" (top-down or bottom-up) EMD approach requires a lot of fiddling with the parameters, possibly even case distinction.
+
+
+```{python py-load-water2}
+#| label: fig-waterlevel2-py
+#| fig-cap: "Another water level measurement, lacking the obvious yearly oscillations, will not work with the previous, year-focused peak detection parameters. You could smooth it, though, with default EMD settings (not shown)."
+
+data2 = PD.read_csv("water_level_example_2.csv")
+data2["t"] = PD.to_datetime(data2['t'])
+t2 = data2["t"].values.ravel()
+w2 = data2["w"].values
+
+
+_, _ = EMDStep(t2, w2, distance = 200, prominence = 0.20);
+PLT.show();
+
+```
+
+
+
+## Summary: Water Level EMD
+
+::: {.callout-note}
+Some observations:
+
+- "guided EMD": yearly oscillations are found first by selecting for peak characteristics
+- noise can be extracted either before or after; EMD is one way of smoothing a signal
+- EMD has some caveats on water level measurements, where oscillation are not necessarily regular
+- EMD extracts the **envelope**, **first mode**, and **residual**, all of which can occasionally be useful for further analysis
+
+:::
+
+
+One goal of my application of EMD was to find a better way to extract a yearly range of water levels, to replace the anachronistic `LG3` and `HG3` calculations.
+With plain application of EMD (i.e. no pre-processing of the data), the envelope seems to be a promising aspect for further inspection.
+
+The reason that water levels turned out to be non-ideal for EMD application is that they lack regular oscillations.
+They are not symmetric (winter wet plateau; summer dry dip), and not necessarily regular (e.g. "wet summer").
+Generally, water level measurements such as the first example above might be more usefully approached with [wavelets](https://docs.scipy.org/doc/scipy-1.12.0/reference/signal.html#wavelets) to find the summer minima.
+However, this is just my [almost-uneducated guess](http://mielke-bio.info/falk/posts/27.cycle_extraction/#orgac5a9c6), based on the visual form of the curves.
+CWT (Continuous Wavelet Transform, [e.g. in R](https://www.rdocumentation.org/packages/Rwave/versions/2.6-5/topics/cwt)) is a great subject for another tutorial.
+
+
+As a reminder, there are many tools to consider for signal analysis. 
+I hope this tutorial could help to bring EMD to your personal repertoire. 
+
+
+Thank you for reading! 
+As always, feedback and suggestions are welcome.
 
