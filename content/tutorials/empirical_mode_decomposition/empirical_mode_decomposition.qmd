@@ -22,13 +22,25 @@ Irregular changes, varying amplitudes, and changing frequencies can result in de
 
 A less widespread method is **Empirical Mode Decomposition**.
 It is, as the name suggests, an empirical method which can help to separate meaningful components of a signal.
+
+::: {.callout-tip}
+EMD can in principle be used to separate the following components of an oscillating signal:
+
+- envelope and momentary amplitude
+- noise
+- different oscillation modes
+
+:::
+
+
 The steps involved are trivial, as I will demonstrate in this tutorial.
+For most part, code is available in Python and R, though the Python implementation is somewhat more comprehensive.
+
 
 ::: {.panel-tabset group="language"}
 ### R
 
 ```{r r-setup}
-.libPaths("/data/R/library")
 suppressMessages(library("dplyr"))
 suppressMessages(library("ggplot2"))
 suppressMessages(library("interpolators"))
@@ -66,7 +78,7 @@ import matplotlib.pyplot as PLT
 
 ## gape angle data 
 
-For exploration, take this brief episode of beak gape angle of a canary cracking hemp seeds, courtesy of [Maja Mielke](https://orcid.org/0000-0001-6328-0589) ([*website*](http://mielke-bio.info/maja/blog))
+For exploration, take this brief episode of beak gape angle of a canary cracking hemp seeds, courtesy of [Maja Mielke](https://orcid.org/0000-0001-6328-0589) ([*website*](http://mielke-bio.info/maja/blog)).
 
 
 ::: {.panel-tabset group="language"}
@@ -132,8 +144,8 @@ ShowPlot()
 
 :::
 
-This bird was in ["positioning" and "biting" phase](http://mielke-bio.info/maja/blog/01_eating_or_being_eaten), placing a seed in the right position for cracking with the help of their upper beak, lower beak and tongue.
-On the x axis of [@fig-data-py]/[@fig-data-r], you see the time, measured in video frames and normalized.
+This bird was in ["positioning" and "biting" phase](http://mielke-bio.info/maja/blog/01_eating_or_being_eaten), placing a hemp seed in the right position for cracking with the help of their upper beak, lower beak and tongue.
+On the x axis of [@fig-data-py]/[@fig-data-r], you see the time (available in video frames, or normalized).
 On the y axis, gape angle indicates (approximately) the angle between the beak tips and corner[^1].
 
 [^1]: "Beak corner" is not the real reference, I just used it for illustration. In fact, an anatomical coordinate reference system was used.
@@ -145,19 +157,20 @@ You can clearly see an initial episode with large gape angle oscillations, and a
 
 ## Basic Algorithm
 
-Engineers often talk about "peak amplitude" and quantify a **momentary amplitude** of a noticably oscillating signal ([see here](https://www.keysight.com/used/be/en/knowledge/guides/how-to-measure-amplitude-engineers-guide)).
+Engineers often talk about "peak amplitude" (as in: amplitude along the peaks) and quantify a **momentary amplitude** of a noticably oscillating signal ([see here](https://www.keysight.com/used/be/en/knowledge/guides/how-to-measure-amplitude-engineers-guide)).
 
 This goes by the framework of ["Hilbert Transform"](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.hilbert.html#scipy.signal.hilbert) and ["Analytical Signal"](https://en.wikipedia.org/wiki/Analytic_signal).
+All fascinating, yet we will here stick with the practical implementation.
 
 
-And to get those, one has to first detect the **peaks** (i.e. local maxima) of the signal.
-[The `emd` toolbox in Python](https://emd.readthedocs.io/en/stable/stubs/emd.sift.interp_envelope.html) can achieve this. 
-(I did not find the equivalent function in the `R::emd` library.)
+To find the peak amplitude of the signal, one obviously has to detect the **peaks** (i.e. local maxima) of the signal.
+Just to get a reference, [the `emd` toolbox in Python](https://emd.readthedocs.io/en/stable/stubs/emd.sift.interp_envelope.html) can achieve this. 
+(I did not find the equivalent function in the `R::emd` library, but no worries, this just serves as reference.)
 
 
 ```{python py-emd-extrema}
 #| label: fig-emd-py
-#| fig-cap: "Empirical mode decomposition involves finding and averaging the envelope. Here, this is done with the `emd` library and default settings."
+#| fig-cap: "Empirical mode decomposition involves finding and averaging the envelope. Here, this is done in Python with the `emd` library and default settings."
 
 
 envelope = NP.stack(
@@ -198,11 +211,11 @@ Note that these wiggles do not matter much for the actual EMD procedure.
 
 ## Peak Detection: Prominence!
 
-While the `EMD` toolbox is quite comprehensive, it might be useful to get our hands on the simple steps outlined above.
+While the `EMD` toolbox is quite comprehensive, we will have much more control by getting our hands on the individual steps outlined above.
 
 The first one is **peak detection**.
 Scipy holds a default function for it: [`scipy.signal.find_peaks()`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.find_peaks.html).
-Non-comprehensive equivalents in R are [`signal::findpeaks()` and `pracma::findpeaks()`](https://search.r-project.org/CRAN/refmans/pracma/html/findpeaks.html), and there is [`gsignal`](https://cran.r-project.org/web/packages/gsignal/vignettes/gsignal.html).
+Non-comprehensive equivalents in R are `signal::findpeaks()` and [`pracma::findpeaks()`](https://search.r-project.org/CRAN/refmans/pracma/html/findpeaks.html), and there is [`gsignal`](https://cran.r-project.org/web/packages/gsignal/vignettes/gsignal.html).
 
 
 The functions only find the local *maxima*, but that is no challenge (just flip the signal to get minima).
@@ -259,14 +272,14 @@ The `scipy` function is quite elaborate and feature-rich.
 
 ::: { .callout-note }
 
-- You could also use the `threshold`, `distance`/`minpeakdistance `, and `width` arguments instead of `prominence`, if you have meaningful priors for either of those.
-- You should double-check that every peak follows a trough (though not strictly necessary, you may skip one or two).
-- It remains to be demonstrated how this performs on less oscillatory trials.
+- Depending on the toolbox of choice, parameters such as `threshold`, `distance`/`minpeakdistance `, `width`, and `prominence` can be used to refine peak detection in case there are meaningful priors for either of those.
+- It is recommended to double-check that every peak follows a trough (though not strictly necessary, brave and daring users may skip one or two). Generally, best plot and inspect all signals with putative peaks to detect errors.
+- It remains to be demonstrated how this step performs on less oscillatory trials.
 
 :::
 
 
-Make sure to do something about your `NaN`'s: `find_peaks` does not like them.
+Make sure to do something about your `NA` and `NaN` values: `find_peaks` does not like them.
 And keep an eye on those edges (i.e. start and end).
 
 
@@ -345,11 +358,19 @@ Keep in mind that the first- and last sample were appended to the lists of peaks
 
 Interpolation in R is quite rudimentary: I miss the option to extrapolate, and one to fix the actual values.
 I did not find a package for [RBF interpolation](https://en.wikipedia.org/wiki/Radial_basis_function_interpolation).
-Python is quite accurate and versatile in terms of interpolation: [`scipy.interpolate`](https://docs.scipy.org/doc/scipy/tutorial/interpolate.html) is feature rich and can do [RBF](https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.RBFInterpolator.html#scipy.interpolate.RBFInterpolator).
+Python is quite accurate and versatile in terms of interpolation: [`scipy.interpolate`](https://docs.scipy.org/doc/scipy/tutorial/interpolate.html) is feature rich and can do [RBF](https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.RBFInterpolator.html#scipy.interpolate.RBFInterpolator) (not shown).
 
 
 
 ## Mode Extraction and Residual
+
+One last step: take the upper and lower peak interpolation.
+This is the **envelope** of the signal.
+Its difference is the **momentary amplitude**.
+The mean of upper and lower envelope line is an **empirical mode**.
+
+This is less a coding exercise, and more of vocabulary practice.
+
 
 
 ::: {.panel-tabset group="language"}
@@ -440,7 +461,8 @@ The *first mode*:
 
 - captures a rather long-term change of beak opening, by extracting something close to the mean of the angular range in which the canary beak move
 - is smooth, compared to the raw signal
-- shows jump-like and wiggly behavior.
+- yet still shows jump-like and wiggly behavior.
+
 
 The *residual*:
 
@@ -457,7 +479,7 @@ You might find this too canary-centric.
 I will now attempt to generailze the procedure by applying it to (i) random walks and (ii) real groundwater level data.
 
 
-But, first things first: for the purpose of conceptual generalization, a more general function might be useful.
+But, first things first: for the purpose of conceptual generalization, a more general function will be useful.
 
 
 ::: {.panel-tabset group="language"}
@@ -579,7 +601,7 @@ My goal is to slightly improve water level analysis, for the following reason.
 
 
 Conventional water level analysis is subject to a few anachronisms.
-In *the good old days*$^{TM}, long before the time of GPS, automatic data loggers, or computers, people went to the field in spring to gather bi-weekly measures of water level from observation wells. 
+In *the good old days*™, long before the time of GPS, automatic data loggers, or computers, people went to the field in spring to gather bi-weekly measures of water level from observation wells. 
 
 What they were really interested in were approximate measures of highest and lowest ground water, so-called `xG3` values. 
 "Approximate", because measurement frequency was limited: a bi-weekly rhythm was about as good as we could get with actual humans putting yardsticks into holes in the ground.
@@ -593,14 +615,17 @@ They are defined as follows:
 [^ritzema2012]: Ritzema *et al.* (2012): "Meten en interpreteren van grondwaterstanden: analyse van methodieken en nauwkeurigheid". Alterra-rapport, Wageningen University & Research. <https://edepot.wur.nl/215081>
 
 
-This is literally how they are calculated.
-The mean of the three lowest/highest ground water levels measured in bi-weekly measurement interval, over a period from April to next March.
+This is literally how they are calculated:
+the mean of the three lowest/highest ground water levels measured in bi-weekly measurement interval, over a period from April to next March.
 
 
 The anachronism is that we still calculate `xG3` like this, despite the availability of high frequency sampled water levels.
 We artificially pick bi-weekly values.
 We disregard the continuous, temporally periodic nature of the phenomenon.
+We choose an arbitrary sampling cadence.
 We ignore measurement uncertainty.
+
+Knowing what was demonstrated above with the momentary amplitude, we could try to do better!
 
 
 Let us first get an intuition of what `xG3` values look like, by looking at random walk data.
@@ -877,10 +902,12 @@ These would quickly lead to over-smoothing of the traces.
 
 ::: {.callout-note}
 On random walk data, EMD seems to achieve little more than smoothing.
-
 The reason is that there is no regular oscillation in the data.
 
-Lesson learned: EMD is especially useful if the data contains more-or-less regular oscillations.
+The *kind* of smoothing is interesting: EMD naturally captures small oscillations, which in many cases are considered "white noise".
+
+
+Note taken: EMD is especially useful if the data contains more-or-less regular oscillations.
 :::
 
 
@@ -895,7 +922,7 @@ Next example: real data.
 
 Our institute assembles data from various observation wells, storing them in [a database](https://watina.inbo.be).
 
-Two example water level traces shall use as a test case for EMD.
+Two example water level traces shall serve as a test case for EMD.
 
 
 ::: {.panel-tabset group="language"}
@@ -939,8 +966,9 @@ ggplot(NULL, aes(x = t, y = w)) +
 
 ```
 
-R does not find the peaks reliably (e.g. the first minimum), and there are consecutive peaks/troughs, which is a pity.
-Otherwise, the residual of this first EMD iteration would be "noise", and one coul proceed to EMD on the first mode.
+R does not find all peaks reliably (e.g. see the first minimum), and there are consecutive peaks/troughs, which is a pity.
+This means that relevant parts of the signal are captured on the residual.
+Normally, the residual of this first EMD iteration would be "noise", and one could proceed to EMD on the first mode.
 
 ::: {.callout-note}
 The available `Python` tools are more versatile, and I recommend switching to "Python" at this point.
@@ -1028,7 +1056,7 @@ PLT.show();
 
 :::
 
-Unguided peak detection *should* find each tiny local peak, therefore initially extracting white noise where it is present.
+As with the random walks above, unguided peak detection *should* find each tiny local peak, therefore initially extracting white noise where it is present.
 
 
 ## Guided Mode Search
@@ -1039,7 +1067,8 @@ Experimenting with the peak detection parameters is worth a try.
 
 First, search the long-term oscillations, by setting `prominence`, `width`, or `distance`.
 In this special case, `width` will exclude the local minima: the lower peaks seem to be rather narrow on this water hole.
-Instead, a combination of distance (more than half a year; remember that peaks and troughs are found separately) and prominence (*meaningful* peak) will find and smoothen the yearly baseline.
+If this is an issue, remember that you can control peak finding for maxima and minima separately.
+However, a combination of distance (more than half a year; remember that peaks and troughs are found separately) and prominence (*meaningful* peak) did the job to find the yearly baseline and straighten out the data (which might not be what we want).
 
 
 ```{python py-emd-wata-topdown1}
@@ -1067,7 +1096,7 @@ PLT.show();
 
 ```
 
-The remainder is a straightened, de-noised signal which could be used for more standardized analysis.
+The remainder after these two hand-selected EMD iterations is a straightened, de-noised signal which could be used for more standardized analysis.
 
 
 ```{python py-emd-wata-topdown3}
@@ -1076,9 +1105,12 @@ The remainder is a straightened, de-noised signal which could be used for more s
 #| fig-cap: "The residual, after two different modes were extracted."
 
 residual2 = residual - mode2
-PLT.plot(t, w - NP.mean(w), lw = 0.5, color = 'k', zorder = 0, alpha = 0.4);
-PLT.plot(t, mode2 - NP.mean(mode2), lw = 1.0, color = 'darkgreen', zorder = 20);
+PLT.plot(t, w - NP.mean(w), lw = 0.5, color = 'k', zorder = 0, alpha = 0.4,
+    label = "raw signal");
+PLT.plot(t, mode2 - NP.mean(mode2), lw = 1.0, color = 'darkgreen', zorder = 20,
+    label = "residual after 2 EMD steps");
 PLT.axhline(0, color = "k", lw = 0.5, zorder = -1);
+PLT.gca().legend(loc = "best");
 PLT.show();
 
 ```
@@ -1111,7 +1143,7 @@ PLT.show();
 
 
 
-Note that there is no guarantee that the same parameters will work on every observation in your data set.
+Note that there is no guarantee that the same guiding parameters will work on every observation in your data set.
 In my experience, a "guided" (top-down or bottom-up) EMD approach requires a lot of fiddling with the parameters, possibly even case distinction.
 
 
@@ -1130,16 +1162,20 @@ PLT.show();
 
 ```
 
+However, these peak detection controls are unavailable in R, so we might better stick with the defaults anyways (which usually work).
 
 
 ## Summary: Water Level EMD
 
 ::: {.callout-note}
-Some observations:
+To "wrap up" (envelope-pun), some observations:
 
 - "guided EMD": yearly oscillations are found first by selecting for peak characteristics
-- noise can be extracted either before or after; EMD is one way of smoothing a signal
-- EMD has some caveats on water level measurements, where oscillation are not necessarily regular
+- noise can be extracted either before or after; EMD is one way of naturally smoothing a signal
+- EMD has some caveats on water level measurements, where oscillation are not necessarily regular or symmetric
+
+And the most important take-home message:
+
 - EMD extracts the **envelope**, **first mode**, and **residual**, all of which can occasionally be useful for further analysis
 
 :::
@@ -1151,7 +1187,7 @@ With plain application of EMD (i.e. no pre-processing of the data), the envelope
 The reason that water levels turned out to be non-ideal for EMD application is that they lack regular oscillations.
 They are not symmetric (winter wet plateau; summer dry dip), and not necessarily regular (e.g. "wet summer").
 Generally, water level measurements such as the first example above might be more usefully approached with [wavelets](https://docs.scipy.org/doc/scipy-1.12.0/reference/signal.html#wavelets) to find the summer minima.
-However, this is just my [almost-uneducated guess](http://mielke-bio.info/falk/posts/27.cycle_extraction/#orgac5a9c6), based on the visual form of the curves.
+This is just my [almost-uneducated guess](http://mielke-bio.info/falk/posts/27.cycle_extraction/#orgac5a9c6), based on the visual form of the curves.
 CWT (Continuous Wavelet Transform, [e.g. in R](https://www.rdocumentation.org/packages/Rwave/versions/2.6-5/topics/cwt)) is a great subject for another tutorial.
 
 
