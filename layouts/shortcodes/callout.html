@@ -1,0 +1,4 @@
+<div class="callout callout-{{ .Get 0 }}" role="note">
+  <div class="callout-title">{{ printf "callouts.%s" (.Get 0) | i18n | strings.FirstUpper }}</div>
+  {{ .Inner | markdownify | emojify  }}
+</div>
