@@ -17,6 +17,7 @@ TODO: screenshots
 In this tutorial, I demonstrate how to set up and deploy a **custom docker container** with [**docker-compose**](https://docs.docker.com/compose).
 This is intended to be a rather general test case, serving for later configuration of more specific container solutions.
 I follow other tutorials available online, and try to capture their essence for an INBO-context.
+Hence, this is just an assembly of other tutorials, with references - no original ideas to be found below.
 
 
 Originally, this covers the steps to be executed on an (arch) linux computer or within a WSL.
@@ -315,3 +316,55 @@ However, if you want to assemble multiple images, or build on base images from m
 In that case `docker compose` is [the way to go](https://docs.docker.com/compose/gettingstarted).
 
 
+
+# Use Case: RStudio with Packages
+
+## rationale
+
+We should be able to apply the above to modify the `rocker/rstudio` server image for our purpose.
+
+
+## dockerfile
+
+This use case is, in fact, well documented:
+
+- <https://rocker-project.org/use/extending.html>
+- <https://rocker-project.org/images/versioned/rstudio.html>
+- <https://davetang.org/muse/2021/04/24/running-rstudio-server-with-docker>
+
+
+Note the syntax in `FROM`: it is `rocker/<image>:<version>`.
+
+```{dsl}
+# Use the rocker rstudio image
+FROM rocker/rstudio:latest
+
+# update the system packages
+RUN apt update \
+    && apt upgrade --yes 
+
+# update pre-installed R packages
+RUN Rscript -e 'update.packages(ask=FALSE)'
+
+# install package binaries from the official debian repositories
+RUN apt install -y --no-install-recommends \
+    r-cran-remotes \
+    && rm -rf /var/lib/apt/lists/*
+
+# install package via Rscript
+# (a) via r-universe
+RUN Rscript -e 'install.packages("watina", repos = c(inbo = "https://inbo.r-universe.dev", CRAN = "https://cloud.r-project.org"))'
+
+# (b) from github
+RUN Rscript -e 'install.packages("remotes")'
+RUN Rscript -e 'remotes::install_github("inbo/inbodb")'
+```
+
+
+
+
+# TODO 
+
+- bugfix the last RStudio variant
+- useful docker commands
+- PodMan is available. <https://rocker-project.org/use/rootless-podman.html>
