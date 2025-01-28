@@ -112,9 +112,9 @@ If it does not find the resources locally, docker will download and extract the 
 docker run --rm -p 8787:8787 -e PASSWORD=YOURNEWPASSWORD rocker/rstudio
 ```
 
-The `--rm` flag makes the docker image non-permanent, i.e. disk space will be freed after you close the container.
-The port specified at `-p` is the one you use to access this local container server.
-The `-e` flag allows you to specify a password, but if you do not specify one, the container will provide a random password upon startup (read the terminal output).
+- The `--rm` flag makes the docker image non-permanent, i.e. disk space will be freed after you close the container.
+- The port specified at `-p` is the one you use to access this local container server. You have to specify it explicitly, otherwise the host system will not let your pass (`:gandalf-meme:`).
+- The `-e` flag allows you to specify a password, but if you do not specify one, the container will provide a random password upon startup (read the terminal output).
 
 
 You are now running (`run`) a `rocker/rstudio` server instance on your `localhost`, i.e. your computer.
@@ -341,30 +341,58 @@ FROM rocker/rstudio:latest
 
 # update the system packages
 RUN apt update \
-    && apt upgrade --yes 
+    && apt upgrade --yes
+
+# git2rdata requires git
+RUN apt install git libgit2-dev --yes
 
 # update pre-installed R packages
-RUN Rscript -e 'update.packages(ask=FALSE)'
-
-# install package binaries from the official debian repositories
-RUN apt install -y --no-install-recommends \
-    r-cran-remotes \
-    && rm -rf /var/lib/apt/lists/*
+# RUN Rscript -e 'update.packages(ask=FALSE)'
 
 # install package via Rscript
 # (a) via r-universe
-RUN Rscript -e 'install.packages("watina", repos = c(inbo = "https://inbo.r-universe.dev", CRAN = "https://cloud.r-project.org"))'
+# RUN Rscript -e 'install.packages("watina", repos = c(inbo = "https://inbo.r-universe.dev", CRAN = "https://cloud.r-project.org"))'
+RUN Rscript -e 'install.packages("git2rdata")'
 
 # (b) from github
-RUN Rscript -e 'install.packages("remotes")'
-RUN Rscript -e 'remotes::install_github("inbo/inbodb")'
+RUN R -q -e 'install.packages("remotes")'
+RUN R -q -e 'remotes::install_github("inbo/INBOmd", dependencies = TRUE)'
+```
+
+It takes some puzzle work to get the dependencies right, e.g. with the `libgit2` dependency above (try commenting out that line).
+However, there is hope: (i) the error output is quite instructive (at least for linux persons), (ii) building is incremental, so you can add successively.
+Remember which system powers your container (Debian/Ubuntu), find help online, and document your progress.
+
+
+Test the image:
+
+```{sh}
+docker build -t test-rstudio .
 ```
 
 
+Run it:
+
+```{sh}
+docker run --rm -p 8787:8787 -e PASSWORD=YOURNEWPASSWORD test-rstudio
+```
+
+
+It is useful to put modifications in scripts copied and executed upon installation:
+https://stackoverflow.com/q/69167940
+e.g. https://rocker-project.org/use/extending.html#install2.r
+
+This makes them available for version control.
+
+
+# useful commands
+
+docker inspect <image-name>
 
 
 # TODO 
 
-- bugfix the last RStudio variant
-- useful docker commands
+- [✓] bugfix the last RStudio variant
+- list useful docker commands
 - PodMan is available. <https://rocker-project.org/use/rootless-podman.html>
+- port to windows
