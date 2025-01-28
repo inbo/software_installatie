@@ -10,6 +10,9 @@ knitr:
     echo: true
 ---
 
+TODO: screenshots
+
+
 
 In this tutorial, I demonstrate how to set up and deploy a **custom docker container** with [**docker-compose**](https://docs.docker.com/compose).
 This is intended to be a rather general test case, serving for later configuration of more specific container solutions.
@@ -40,8 +43,8 @@ Alternatively, you can install it as a terminal tool.
 
 
 ```{sh}
-sudo apt update && sudo apt install docker docker-compose # debian-based
-# sudo pacman -Sy docker docker-compose # arch linux
+sudo apt update && sudo apt install docker docker-compose docker-buildx # debian-based
+# sudo pacman -Sy docker docker-compose docker-buildx # arch linux
 ```
 
 
@@ -79,7 +82,7 @@ docker --version
 ```
 
 
-# Existing Containers
+# Existing Containers: `run`
 
 ## rationale
 
@@ -147,10 +150,14 @@ This is a simple and quick way to run R and RStudio in a container.
 
 However, there are limitations:
 
+::: {.callout-warning}
 - You have to live with the R packages provided in the container, or otherwise install them each time you access it...
-- ... unless you make you container permanent, omitting the `--rm` option. Note that this will cost considerable disk space, and will not transfer to other computers (the original purpose of docker).
-- It should be kept in mind that software is best kept up to date. Occasionally re-install your docker image and R packages to get the latest packages.
+- ... unless you make you container permanent by omitting the `--rm` option. Note that this will cost considerable disk space, will not transfer to other computers (the original purpose of docker), and demands occasional updates (next point).
+- It is good practice to keep software up to date. Occasionally re-install your docker image and R packages to get the latest versions.
+- You should make sure that the containers are configured correctly and securely. This is especially important with server components which expose your machine to the internet.
 - There is a performance penalty from using containers: in inaccurate laymans' terms, they emulate (parts of a) "computer" inside your computer. 
+
+:::
 
 
 On the performance issue: I attempted this on my local laptop with matrix multiplication.
@@ -190,5 +197,121 @@ The *bad news* is that these are a little less than `-20%` performance, which is
 
 This is just a single snapshot on a laptop. 
 Feel free to systematically and scientifically repeat the tests on your own machine.
+
+
+# Custom Containers: `build`
+
+## rationale
+
+One advantage of a docker container is its mobility: you can "bring it with you" to other workstations, use cloud computing, mostly without having to worry about installation of the components.
+This especially pays off in complicated server setups and distributed computing.
+The container is standardized; you could share it with colleagues to make sure versions are compatible.
+
+
+However, as mentioned above, you will require personalization.
+As a use case, imagine you would like to have an RStudio server which comes with relevant inbo packages pre-installed (e.g. [`inbodb`](https://inbo.github.io/inbodb), [`watina`](https://inbo.github.io/watina)).
+
+I will return to this use case below.
+To explore the general workings of `docker build`, let's first turn to more web-directed tasks.
+
+
+## init: a `flask`
+
+[Python `flask`](https://en.wikipedia.org/wiki/Flask_(web_framework)) is a library which allows you to execute python scripts upon web access by users.
+For example, you can use flask to gather information a user provides in an html form, then process and store it wherever you like.
+
+
+I will follow the following examples and tutorials to spin up a flask container, but provide modifications and comments on the steps.
+
+- <https://docs.docker.com/build/concepts/dockerfile>
+- <https://medium.com/@geeekfa/dockerizing-a-python-flask-app-a-step-by-step-guide-to-containerizing-your-web-application-d0f123159ba2>
+
+
+
+> **It all starts with a [dockerfile](https://www.geeksforgeeks.org/what-is-dockerfile).**[^3]
+
+[^3]: <https://docs.docker.com/build/concepts/dockerfile>
+
+
+As you will see, the docker file will give you all the design choices to create your own container.
+I think of the docker file as a script which provides all the instructions to set up your container, starting with `FROM` (i.e. which prior container you build upon) to `RUN`ning commands.
+
+
+A list of the official python containers is [available here](https://hub.docker.com/_/python).
+Note that you build every container upon the skeleton of an operating system: I chose [alpine linux](https://en.wikipedia.org/wiki/Alpine_Linux).
+
+
+The dockerfile resides in your working folder (yet it also defines a [`WORKDIR`](https://stackoverflow.com/a/51066379) from within which later commands are executed).
+
+- Navigate to a folder in which you intend to store your container(s), e.g. `cd /data/docker`.
+- Create a file called `Dockerfile`: `touch Dockerfile`.
+- Edit the file in your favorite text editor (`vim Dockerfile`): paste and modify the content below.
+
+```{dsl}
+# Use the official Python image (alpine linux, python 3)
+FROM python:3-alpine
+
+# install app dependencies
+RUN apk update && apk add --no-cache python3 py3-pip
+RUN pip install flask
+
+# install app
+COPY hello.py /
+
+# final configuration
+ENV FLASK_APP=hello
+EXPOSE 8000
+CMD ["flask", "run", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+
+Note that the following `hello.py` file needs to be present in your working directory:
+
+```{python}
+from flask import Flask
+app = Flask(__name__)
+
+@app.route("/")
+def hello():
+    return "Hello, INBO!"
+```
+
+
+With the `Dockerfile` and `hello.py` in place, you can build the container [^4].
+
+```{sh}
+sudo docker build -t my-flask .
+```
+
+[^4]: If you did not install the `docker-buildx` package, you will get a legacy warning.
+
+
+List your available containers ("images") via the `docker images` command!
+
+You should now see a `python` image, which is the base alpine image we built upon.
+There is also a `my-flask`. 
+Try it!
+
+```{sh}
+docker run my-flask
+```
+
+The terminal should give you an IP and port; because the flask runs in a container, `localhost:8000` will not work out-of-the-box.
+Instead, in my case, it was `http://172.17.0.2:8000`.
+
+
+:::{.callout-note}
+So far, so good. 
+We have used an existing image and added `flask` on top of it.
+This works via writing a `Dockerfile` and building an image.
+:::
+
+
+## Multiple Images: `compose` versus `build`
+
+The above works fine for most cases.
+However, if you want to assemble multiple images, or build on base images from multiple sources, you need a level up.
+
+In that case `docker compose` is [the way to go](https://docs.docker.com/compose/gettingstarted).
 
 
