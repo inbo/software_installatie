@@ -1,5 +1,38 @@
 /* Custom CSS */
 
+/* callout boxes */
+/* cf. https://rossabaker.com/configs/website/shortcodes/callout/ */
+.callout {
+    margin: 1.5rem 0;
+    padding: 1em;
+    border-inline-start: .25em solid;
+}
+
+.callout-title {
+    font-weight: bolder;
+    margin-bottom: 1em;
+}
+
+.callout-note {
+    border-color: #366196;
+    background: #b4c9e4;
+}
+
+.callout-emphasize {
+    border-color: #993368;
+    background: #e6b2cd;
+}
+
+/* captions */
+/* cf. https://thesynack.com/posts/markdown-captions */
+figcaption {
+  font-style: italic;
+  font-size: small;
+  padding: 0px;
+  text-align: center;
+}
+
+
 /* SIDEBAR */
 
 /* Add gray background to sidebar */

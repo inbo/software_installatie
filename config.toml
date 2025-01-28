@@ -2,7 +2,7 @@ theme = "minimo"
 languageCode = "en-us"
 title = "INBO Tutorials"
 
-ignoreFiles = ["\\.Rmd$", "\\.Rmarkdown$", "_cache$", "\\.db$", "\\.csv$", "\\.sqlite$", "\\.geojson$"]
+ignoreFiles = ["\\.Rmd$", "\\.Rmarkdown$", "\\.qmd$", "_cache$", "\\.db$", "\\.csv$", "\\.sqlite$", "\\.geojson$"]
 # relativeURLs = true
 # canonifyurls = true
 
@@ -154,3 +154,11 @@ weight = 1
     [markup.goldmark.renderer]
       unsafe = true
 
+    [markup.goldmark.extensions]
+      [markup.goldmark.extensions.passthrough]
+        enable = true
+        [markup.goldmark.extensions.passthrough.delimiters]
+          block = [['\[', '\]'], ['$$', '$$']]
+          inline = [['\(', '\)']]
+[params]
+  math = false

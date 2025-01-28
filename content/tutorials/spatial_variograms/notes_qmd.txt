@@ -1,0 +1,40 @@
+
+steps to get a qmd to hugo markdown:
+
++ export hugo-md:
+  quarto render <file>.qmd --to hugo-md
+
++ include yaml
+  preserve_yaml: true
+
+
+
++ callouts: https://rossabaker.com/configs/website/shortcodes/callout/
+{{% callout note %}}
+{{% /callout %}}
+
+
+
++ section crosslinks:
+## <a href="sec-section"></a> Section
+
++ figure captions
+<img
+src="path/to/figure.png"
+id="fig-label"
+alt="Figure 1: Caption text." />
+<figcaption>Figure 1: Caption text.</figcaption><br>
+
++ equations
+  in yaml header:
+   params:
+     math: true
+  replace $s$ -> \\(s\\), $$\ldots$$ -> \\[\ldots\\]
+  cf. math https://gohugo.io/content-management/mathematics/
+    eqn with \\(\\) and \\[\\]
+
++ preview procedure:
+  rm tutorials -rf
+  unzip <zip>
+  python -m http.server 8887
+
