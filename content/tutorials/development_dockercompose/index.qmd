@@ -10,9 +10,6 @@ knitr:
     echo: true
 ---
 
-TODO: screenshots
-
-
 
 In this tutorial, I demonstrate how to set up and deploy a **custom docker container** with [**docker-compose**](https://docs.docker.com/compose).
 This is intended to be a rather general test case, serving for later configuration of more specific container solutions.
@@ -387,12 +384,139 @@ This makes them available for version control.
 
 # useful commands
 
-docker inspect <image-name>
+We have briefly seen `docker --version`, `docker build`, `docker run`, and there are certainly more settings and tweaks on these commands to learn about.
+
+There are other docker commands which might help you out of a misery.
+
+- `docker images` will list your images in convenient table format; the `-q` flag returns only IDs.
+- `docker inspect <image-name or image-id>` brings up all the configuration details about a specific image; you can, for example, find out its docker version and network ip.
+- `docker rmi <image-name or image-id>` will remove an image; `docker rmi $(docker images -q)` will remove **all** your images. Of course, you get to keep the dockerfiles.
+- `docker ps` ("print status") will list all running containers; `docker stop $(docker ps -a -q)` will stop them **all**.
+
+There are a gazillion more to choose and use, the [docker docs](https://docs.docker.com/reference/cli/docker) are your go-to source.
+
+
+# Podman
+
+## purpose
+
+Whales don't really carry "containers", and "images" are better hung on a wall. 
+Don't fall for the docker marketing!
+
+
+There are alternatives which mitigate some of the docker limitations and disadvantages.
+
+The most prominent one (the only one *I* looked at, sorry) might be `podman`.
+A container is a "pod", they run on a "machine", and this tool helps you manage them.
+The major advantage of podman is that it can be configured to run **"rootless"**, i.e. without administrator rights [^5].
+
+[^5]: Daniel J. Walsh (2019): "How does rootless Podman work?" <https://opensource.com/article/19/2/how-does-rootless-podman-work>
+
+
+Podman is [well documented](https://podman.io/docs/installation).
+Another reliable source as so often is the [arch linux wiki on podman](https://wiki.archlinux.org/title/Podman), no matter which linux you are on.
+On windows, people have succeeded in running podman through a WSL.
+
+
+## setup
+
+I follow the `podman` installation instructions for arch linux, to set up a **rootless container environment**.
+
+Installation:
+
+```{sh}
+pacman -Sy podman podman-compose podman-docker passt
+```
+
+The last one, `passt` (providing `pasta`, yum!), is required for rootless network access.  
+
+
+Normally, podman will run *only if you are root*. 
+This has to be changed, to get *rootless* ([see also](https://man.archlinux.org/man/podman.1#Rootless_mode))
+The first step is to confirm a required kernel module: check that `unpriviledged_users_clone` is set to one.
+
+```{sh}
+sysctl kernel.unprivileged_userns_clone
+```
+
+Then, configure "subordinate user IDs". 
+There are detail differences in each linux distro; with some luck, your username is already present in these lists:
+
+```{sh}
+cat /etc/subuid
+cat /etc/subgid
+```
+
+If not, you can be admitted to the club of subordinates with the command:
+```{sh}
+usermod --add-subuids 100000-165535 --add-subgids 100000-165535 <username>
+podman system migrate
+```
+
+
+We note some useful commands on the way: `podman system ...` and `podman info`.
+You might immediately check "native rootless overlays" (has something to do with mounting filesystems in the container):
+
+```{sh}
+podman info | grep -i overlay
+```
+
+
+Then, networking: pods might need to communicate to each other and to the world.
+And, of course, container storage: make sure you know where your containers are stored.
+These and more settings are in `/etc/containers/containers.conf` and `/etc/containers/storage.conf`; make sure to scan and edit them to your liking.
+
+
+## usage
+
+You can use images from `docker.io` with podman.
+For example:
+
+```{sh}
+podman search docker.io/alpine
+podman pull docker.io/alpine # download a machine
+podman run -it docker.io/alpine # will connect to the container
+exit
+```
+
+
+## podman rocker
+
+From here, **podman is a full drop-in replacement for docker**; just that you are not forced to grant host system root privileges to containers.
+
+And you can use any docker image; `rocker/rstudio` [is available](https://rocker-project.org/use/rootless-podman.html) (don't forget to specify the port).
+
+```{sh}
+podman run --rm -p 8787:8787 -e PASSWORD=YOURNEWPASSWORD -v /data/git/coding-club:/root/coding-club docker.io/rocker/rstudio
+```
+
+With one exception: the user to login to `rstudio` is not `rstudio`, but `root`, and you have root rights on the container. 
+You had those before anyways, but now they are confined to within the pod.
+
+
+
+:::{.callout-note}
+To summarize:
+
+- **Docker's Dockerfiles like the one above will build as with docker.**
+- You can even stick to the `docker` commands thanks to the `podman-docker` package.
+- There is podman desktop, if you like clicking.
+- Podman is everything docker is, just better.
+
+:::
+
+Kudos to the podman devs!
+
+
+Your head might twisting in a swirl of containers by now, and will leave it here.
+Thank you for reading!
 
 
 # TODO 
 
 - [✓] bugfix the last RStudio variant
-- list useful docker commands
-- PodMan is available. <https://rocker-project.org/use/rootless-podman.html>
-- port to windows
+- [✓] list useful docker commands
+- [✓] Podman is available. <https://rocker-project.org/use/rootless-podman.html>
+- [ ] port to windows: (1) docker
+- [ ] port to windows: (2) podman
+- [ ] insert screenshots
