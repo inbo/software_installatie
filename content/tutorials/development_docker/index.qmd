@@ -11,38 +11,69 @@ knitr:
 ---
 
 
-In this tutorial, I demonstrate how to set up and deploy a **custom docker container** with [**docker-compose**](https://docs.docker.com/compose).
+In this tutorial, I demonstrate how to set up and deploy a **custom docker container** with [**docker**](https://docs.docker.com).
 This is intended to be a rather general test case, serving for later configuration of more specific container solutions.
+For example, you will learn how to spin up an existing `rocker/rstudio` container, and even modify it with additional system components and libraries.
 I follow other tutorials available online, and try to capture their essence for an INBO-context.
 Hence, this is just an assembly of other tutorials, with references - no original ideas to be found below.
 
 
-Originally, this covers the steps to be executed on an (arch) linux computer or within a WSL.
-On Windows, installation is different, yet there should be a linux-like terminal in the `docker desktop` app which would allow you to run the same commands.
+On Windows, installation, configuration, and management of containers runs via the `docker desktop` app. 
+This tutorial also covers the terminal-centered steps to be executed on a linux computer or within a WSL.
 
-I will later attempt to reproduce the steps on windows.
-
+I also present **podman** as a full replacement for docker, and recommend to give it a try.
 
 
 __References:__
 
+- <https://docs.docker.com>
+- <https://podman.io/docs>, <https://github.com/containers/podman/blob/main/docs/tutorials/podman-for-windows.md>
+- <https://wiki.archlinux.org/title/Podman>
 - <https://jsta.github.io/r-docker-tutorial/02-Launching-Docker.html>
--   <https://medium.com/@geeekfa/docker-compose-setup-for-a-python-flask-api-with-nginx-reverse-proxy-b9be09d9db9b>
+- <https://medium.com/@geeekfa/docker-compose-setup-for-a-python-flask-api-with-nginx-reverse-proxy-b9be09d9db9b>
 - <https://testdriven.io/blog/dockerizing-flask-with-postgres-gunicorn-and-nginx>
 
 
 # Installation
 
-The installation procedure [is documented here](https://docs.docker.com/compose/install).
+The installation procedure [is documented here](https://docs.docker.com/install).
 
-Docker compose comes with the *Docker Desktop* app.
-That app is probably trivial and hardly worth a tutorial.
-Alternatively, you can install it as a terminal tool.
+Docker comes with the *Docker Desktop* app.
+That app by itself is trivial and hardly worth a tutorial.
+
+## windows
+Navigate to [the download site for docker on windows](https://docs.docker.com/desktop/setup/install/windows-install).
+Download the "App" (newspeak for: graphical user interface to a software tool).
+Install it.
+
+
+*Note for INBO users:* you should select Hyper-V, instead of WSL, against recommendation (WSL is discouraged/disabled by enterprise settings). 
+However, you probably do not have admin rights, which is good: **ask our friendly ICT helpdesk for support right away.**
+
+
+:::{.container-note}
+Side rant collection: 
+
+- Installation of Docker Desktop does not allow you to specify an install path (might have missed it).
+- `&'C:\Program Files\Docker\Docker\Docker Desktop.exe'` only runs with admin privileges.
+- It is bloated to more than 2GB.
+- The first thing it does is prompt you for a login.
+- The second thing it does is annoy you with a survey.
+- It is full of uninvited ads ("Docker Build Cloud", "To access the latest features, sign in."/don't!).
+
+If you have some dignity, learn the terminal commands below.
+:::
+
+
+## linux
+
+On linux, that same `docker-desktop` [is available for installation](https://docs.docker.com/desktop/setup/install/linux/). 
+*Or* you could install docker as a terminal tool.
 
 
 ```{sh}
-sudo apt update && sudo apt install docker docker-compose docker-buildx # debian-based
-# sudo pacman -Sy docker docker-compose docker-buildx # arch linux
+sudo apt update && sudo apt install docker docker-buildx # debian-based
+# sudo pacman -Sy docker docker-buildx # arch linux
 ```
 
 
@@ -73,6 +104,8 @@ systemctl stop docker.service
 ```
 
 
+## both, *post hoc*
+
 You can check the docker installation by confirming the version at which the service is running.
 
 ```{sh}
@@ -88,7 +121,8 @@ Docker is about working in containers, if you like that.
 You can think of this as living in a ["tiny home", or "mobile home"](https://parametric-architecture.com/tiny-house-movement). 
 Let's call it a fancy caravan.
 
-If you do not have the cash to build your own home, you can of course use someone elses'.
+If you do not have the cash to build your own home, you can of course use someone else's.
+There are a gazillion **docker images available for you** on [docker hub](https://hub.docker.com).
 
 
 ## example
@@ -100,7 +134,12 @@ For example[^1], there are docker images with [rstudio server](https://posit.co/
 [^1]: I mostly follow [this tutorial](https://jsta.github.io/r-docker-tutorial/02-Launching-Docker.html).
 
 
-Execute the following script.
+:::{.callout-note}
+If you run the app, simply search, pull, and run it.
+:::
+
+
+Otherwise, execute the following script (*windows*: use an administrator terminal).
 If it does not find the resources locally, docker will download and extract the image from dockerhub[^2].
 
 [^2]: Just like "github" is a server service to store git repositories, guess what: "docker hub" is a service to store docker containers.
@@ -199,6 +238,8 @@ Feel free to systematically and scientifically repeat the tests on your own mach
 
 # Custom Containers: `build`
 
+(This is more advanced stuff. Nevertheless, be brave and give it a try!)
+
 ## rationale
 
 One advantage of a docker container is its mobility: you can "bring it with you" to other workstations, use cloud computing, mostly without having to worry about installation of the components.
@@ -211,6 +252,14 @@ As a use case, imagine you would like to have an RStudio server which comes with
 
 I will return to this use case below.
 To explore the general workings of `docker build`, let's first turn to more web-directed tasks.
+
+:::{.callout-note}
+With Docker Desktop, you have the graphical interface for "builds".
+This might fall under the extended functionality which requires a login.
+
+Even without a login, you *can* proceed via a terminal, as below.
+Once you create a `Dockerfile` and build it, it will appear in the GUI.
+:::
 
 
 ## init: a `flask`
@@ -294,8 +343,9 @@ Try it!
 docker run my-flask
 ```
 
-The terminal should give you an IP and port; because the flask runs in a container, `localhost:8000` will not work out-of-the-box.
+The terminal should give you an IP and port; because the flask runs in a container, `localhost:8000` will **not work** out-of-the-box.
 Instead, in my case, it was `http://172.17.0.2:8000`.
+(Sadly, although I could build and run this container on windows, I did not get through via the browser :shrug:.)
 
 
 :::{.callout-note}
@@ -311,6 +361,7 @@ The above works fine for most cases.
 However, if you want to assemble multiple images, or build on base images from multiple sources, you need a level up.
 
 In that case `docker compose` is [the way to go](https://docs.docker.com/compose/gettingstarted).
+I did not have the need to try this out, yet, but will return here if that changes.
 
 
 
@@ -388,10 +439,11 @@ We have briefly seen `docker --version`, `docker build`, `docker run`, and there
 
 There are other docker commands which might help you out of a misery.
 
+- `docker run -it --entrypoint /bin/bash <image>` brings you to the shell of a container; you can update, upgrade, or just mess around.
 - `docker images` will list your images in convenient table format; the `-q` flag returns only IDs.
 - `docker inspect <image-name or image-id>` brings up all the configuration details about a specific image; you can, for example, find out its docker version and network ip.
-- `docker rmi <image-name or image-id>` will remove an image; `docker rmi $(docker images -q)` will remove **all** your images. Of course, you get to keep the dockerfiles.
 - `docker ps` ("print status") will list all running containers; `docker stop $(docker ps -a -q)` will stop them **all**.
+- `docker rmi <image-name or image-id>` will remove an image; `docker rmi $(docker images -q)` will remove **all** your images. Of course, you get to keep the dockerfiles.
 
 There are a gazillion more to choose and use, the [docker docs](https://docs.docker.com/reference/cli/docker) are your go-to source.
 
@@ -415,7 +467,19 @@ The major advantage of podman is that it can be configured to run **"rootless"**
 
 Podman is [well documented](https://podman.io/docs/installation).
 Another reliable source as so often is the [arch linux wiki on podman](https://wiki.archlinux.org/title/Podman), no matter which linux you are on.
-On windows, people have succeeded in running podman through a WSL.
+On windows, people have succeeded in running Podman through a WSL.
+
+:::{.callout-note}
+For windows, there is a convenient "Podman Desktop" GUI which guides you through the installation and setup.
+It is intuitive, transparent (telemetry), backed by RedHat.
+
+Unfortunately, it relies on Windows Subsystem for Linux (WSL), which is not available at the moment.
+
+:`(
+
+:::
+
+The instructions below apply for linux.
 
 
 ## setup
@@ -425,13 +489,14 @@ I follow the `podman` installation instructions for arch linux, to set up a **ro
 Installation:
 
 ```{sh}
-pacman -Sy podman podman-compose podman-docker passt
+pacman -Sy podman podman-docker passt
 ```
 
 The last one, `passt` (providing `pasta`, yum!), is required for rootless network access.  
+Optionally, there is `podman-compose`.
 
 
-Normally, podman will run *only if you are root*. 
+Out of the box, Podman will run *only if you are root*. 
 This has to be changed, to get *rootless* ([see also](https://man.archlinux.org/man/podman.1#Rootless_mode))
 The first step is to confirm a required kernel module: check that `unpriviledged_users_clone` is set to one.
 
@@ -517,6 +582,7 @@ Thank you for reading!
 - [✓] bugfix the last RStudio variant
 - [✓] list useful docker commands
 - [✓] Podman is available. <https://rocker-project.org/use/rootless-podman.html>
-- [ ] port to windows: (1) docker
-- [ ] port to windows: (2) podman
+- [✓] change intro ~~compose~~
+- [✓] port to windows: (1) docker
+- [X] port to windows: (2) podman
 - [ ] insert screenshots
