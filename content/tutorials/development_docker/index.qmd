@@ -51,6 +51,9 @@ Install it.
 However, you probably do not have admin rights, which is good: **ask our friendly ICT helpdesk for support right away.**
 
 
+![desktop app](docker_desktop1.jpg)
+
+
 :::{.container-note}
 Side rant collection: 
 
@@ -72,6 +75,7 @@ On linux, that same `docker-desktop` [is available for installation](https://doc
 
 
 ```{sh}
+#| eval: false
 sudo apt update && sudo apt install docker docker-buildx # debian-based
 # sudo pacman -Sy docker docker-buildx # arch linux
 ```
@@ -81,6 +85,7 @@ For users to be able to use docker, they must be in the "docker" group.
 (Insert your username at `<your-username>`.)
 
 ```{sh}
+#| eval: false
 sudo usermod -a -G docker <your-username>
 ```
 
@@ -95,6 +100,7 @@ However, due to [diverse](https://docs.docker.com/engine/security) [security](ht
 On a `systemd` system, you can start and stop docker on demand via the following commands (those will ask you for `sudo` authentification if necessary).
 
 ```{sh}
+#| eval: false
 systemctl start docker
 
 systemctl status docker # check status
@@ -109,6 +115,7 @@ systemctl stop docker.service
 You can check the docker installation by confirming the version at which the service is running.
 
 ```{sh}
+#| eval: false
 docker --version
 ```
 
@@ -138,6 +145,8 @@ For example[^1], there are docker images with [rstudio server](https://posit.co/
 If you run the app, simply search, pull, and run it.
 :::
 
+![desktop app: run](docker_desktop2.jpg)
+
 
 Otherwise, execute the following script (*windows*: use an administrator terminal).
 If it does not find the resources locally, docker will download and extract the image from dockerhub[^2].
@@ -145,12 +154,16 @@ If it does not find the resources locally, docker will download and extract the 
 [^2]: Just like "github" is a server service to store git repositories, guess what: "docker hub" is a service to store docker containers.
 
 ```{sh}
+#| eval: false
 docker run --rm -p 8787:8787 -e PASSWORD=YOURNEWPASSWORD rocker/rstudio
 ```
+
 
 - The `--rm` flag makes the docker image non-permanent, i.e. disk space will be freed after you close the container.
 - The port specified at `-p` is the one you use to access this local container server. You have to specify it explicitly, otherwise the host system will not let your pass (`:gandalf-meme:`).
 - The `-e` flag allows you to specify a password, but if you do not specify one, the container will provide a random password upon startup (read the terminal output).
+
+![run](docker_run.jpg)
 
 
 You are now running (`run`) a `rocker/rstudio` server instance on your `localhost`, i.e. your computer.
@@ -175,6 +188,7 @@ Suppose you have an R project you would like to work on, stored, for example, in
 Then you can link this to your containers' home folder via the following command.
 
 ```{sh}
+#| eval: false
 docker run --rm -p 8787:8787 -v /data/git/coding-club:/home/rstudio/coding-club rocker/rstudio
 ```
 
@@ -261,6 +275,8 @@ Even without a login, you *can* proceed via a terminal, as below.
 Once you create a `Dockerfile` and build it, it will appear in the GUI.
 :::
 
+![build on windows](docker_winbuild.jpg)
+
 
 ## init: a `flask`
 
@@ -327,10 +343,14 @@ def hello():
 With the `Dockerfile` and `hello.py` in place, you can build the container [^4].
 
 ```{sh}
+#| eval: false
 sudo docker build -t my-flask .
 ```
 
 [^4]: If you did not install the `docker-buildx` package, you will get a legacy warning.
+
+
+![build](docker_build.jpg)
 
 
 List your available containers ("images") via the `docker images` command!
@@ -340,6 +360,7 @@ There is also a `my-flask`.
 Try it!
 
 ```{sh}
+#| eval: false
 docker run my-flask
 ```
 
@@ -415,6 +436,7 @@ Remember which system powers your container (Debian/Ubuntu), find help online, a
 Test the image:
 
 ```{sh}
+#| eval: false
 docker build -t test-rstudio .
 ```
 
@@ -422,6 +444,7 @@ docker build -t test-rstudio .
 Run it:
 
 ```{sh}
+#| eval: false
 docker run --rm -p 8787:8787 -e PASSWORD=YOURNEWPASSWORD test-rstudio
 ```
 
@@ -489,6 +512,7 @@ I follow the `podman` installation instructions for arch linux, to set up a **ro
 Installation:
 
 ```{sh}
+#| eval: false
 pacman -Sy podman podman-docker passt
 ```
 
@@ -501,6 +525,7 @@ This has to be changed, to get *rootless* ([see also](https://man.archlinux.org/
 The first step is to confirm a required kernel module: check that `unpriviledged_users_clone` is set to one.
 
 ```{sh}
+#| eval: false
 sysctl kernel.unprivileged_userns_clone
 ```
 
@@ -508,12 +533,14 @@ Then, configure "subordinate user IDs".
 There are detail differences in each linux distro; with some luck, your username is already present in these lists:
 
 ```{sh}
+#| eval: false
 cat /etc/subuid
 cat /etc/subgid
 ```
 
 If not, you can be admitted to the club of subordinates with the command:
 ```{sh}
+#| eval: false
 usermod --add-subuids 100000-165535 --add-subgids 100000-165535 <username>
 podman system migrate
 ```
@@ -523,6 +550,7 @@ We note some useful commands on the way: `podman system ...` and `podman info`.
 You might immediately check "native rootless overlays" (has something to do with mounting filesystems in the container):
 
 ```{sh}
+#| eval: false
 podman info | grep -i overlay
 ```
 
@@ -538,6 +566,7 @@ You can use images from `docker.io` with podman.
 For example:
 
 ```{sh}
+#| eval: false
 podman search docker.io/alpine
 podman pull docker.io/alpine # download a machine
 podman run -it docker.io/alpine # will connect to the container
@@ -552,6 +581,7 @@ From here, **podman is a full drop-in replacement for docker**; just that you ar
 And you can use any docker image; `rocker/rstudio` [is available](https://rocker-project.org/use/rootless-podman.html) (don't forget to specify the port).
 
 ```{sh}
+#| eval: false
 podman run --rm -p 8787:8787 -e PASSWORD=YOURNEWPASSWORD -v /data/git/coding-club:/root/coding-club docker.io/rocker/rstudio
 ```
 
@@ -573,16 +603,17 @@ To summarize:
 Kudos to the podman devs!
 
 
-Your head might twisting in a swirl of containers by now, and will leave it here.
+# Summary
+
+In this tutorial, I demonstrated the basics of containerization with docker and podman.
+There are convenient GUI apps, and sophisticated terminal commands, both of which are worth getting familiar to.
+
+
+Containerization is useful, with the advantages of modularity, configurability, transparency (open science: share your rocker file), shared use ...
+There are some manageable pitfalls with respect to admin rights and resource limitation.
+
+
+Your head might twisting in a swirl of containers by now.
+I hope you find this overview instructive. 
 Thank you for reading!
 
-
-# TODO 
-
-- [✓] bugfix the last RStudio variant
-- [✓] list useful docker commands
-- [✓] Podman is available. <https://rocker-project.org/use/rootless-podman.html>
-- [✓] change intro ~~compose~~
-- [✓] port to windows: (1) docker
-- [X] port to windows: (2) podman
-- [ ] insert screenshots
