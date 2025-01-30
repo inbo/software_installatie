@@ -476,9 +476,47 @@ docker run --rm -p 8787:8787 -e PASSWORD=YOURNEWPASSWORD test-rstudio
 ```
 
 
-It is good practice to extract modifications in scripts and modularly bring them in to be executed upon installation ([see here](https://stackoverflow.com/q/69167940), [and here](https://rocker-project.org/use/extending.html#install2.r)).
+It is good practice to extract modifications in scripts and modularly bring them in to be executed upon installation ([see here](https://stackoverflow.com/q/69167940), [and here](https://rocker-project.org/use/extending.html#install2.r)), via `COPY`.
 This makes them available for a more refined version control.
 As you know, [version control is key!](https://tutorials.inbo.be/tags/git)
+
+But, on that line, how about private repositories?
+More generally, how would we get (personal) data from our host machine to the container?
+
+
+## data exchange
+
+Arguably, among the rather tricky tasks when working with containers is file exchange.
+There are [several options available](https://forums.docker.com/t/best-practices-for-getting-code-into-a-container-git-clone-vs-copy-vs-data-container/4077):
+
+- `COPY` in the Dockerfile (or `ADD` [in appropriate cases](https://www.docker.com/blog/docker-best-practices-understanding-the-differences-between-add-and-copy-instructions-in-dockerfiles))
+- ["bind mounts"](https://docs.docker.com/engine/storage/bind-mounts) 
+- [volumes](https://docs.docker.com/engine/storage/volumes)
+- possibly R ways of 
+
+
+For the use case of [installing R packages from a private git repo](https://www.geeksforgeeks.org/how-to-clone-private-git-repo-with-dockerfile), however, there are several constraints:
+
+- It best happens at build time, to enable all the good stuff: `--rm`, sharing, ...
+- Better keep your credentials (e.g. ssh keys, access tokens) off the container, both system side and [on the R side](https://usethis.r-lib.org/articles/git-credentials.html).
+- On the other hand, updates can often happen by re-building.
+
+
+In this (and only this) situation, the simple solution is to copy a clone of the repository to the container, and then install it.
+The clone should be within the Dockerfile folder.
+
+```{dsl}
+# copy the repo
+COPY my_private_repo /opt/my_private_repo
+
+# manually install dependencies
+RUN R -q -e 'install.packages("remotes", dependencies = TRUE)'
+
+# install package from folder
+RUN R -q -e 'install.packages("/opt/my_private_repo", repos = NULL, type = "source", dependencies = TRUE)'
+```
+
+This [seems to be good practice](https://stackoverflow.com/questions/23391839/clone-private-git-repo-with-dockerfile/55761914#55761914), for being simple, secure, and well feasible.
 
 
 # useful commands
