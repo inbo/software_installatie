@@ -66,3 +66,5 @@ data_gisclub/
 # png images for the brms tutorial
 /content/tutorials/r_brms/brms_eng/*.png
 /content/tutorials/r_brms/brms_nl/*.png
+
+/.quarto/
